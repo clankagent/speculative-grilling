@@ -36,6 +36,23 @@ test("questions are candidates until the explicit scheduling phase", () => {
   s.execute(a, { type: "schedule" });
   expect(s.questions(a)).toHaveLength(1);
 });
+
+test("late worker completion cannot undo an explicit pause", () => {
+  const { s, a } = setup();
+  s.execute(
+    a,
+    { type: "startWork", workId: "late", hypothesisId: "root", reserveTokens: 100 },
+    "system",
+  );
+  s.execute(a, { type: "pause" }, "human");
+  s.execute(
+    a,
+    { type: "completeWork", workId: "late", summary: "Obsolete result", decisions: [] },
+    "system",
+  );
+  expect(s.read(a).state).toBe("paused");
+  expect(s.read(a).work.late?.status).not.toBe("completed");
+});
 test("branch-local proposals carry scope and cannot collide across worlds", () => {
   const { s, a } = setup();
   s.execute(a, { type: "fork", hypothesisId: "root", decisionId: "mode" });

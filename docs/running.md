@@ -73,6 +73,8 @@ The reasoning provider receives the explicitly supplied brief, session context, 
 
 Calls have timeouts and no automatic paid retry. Provider error bodies are withheld from durable logs and tool output. Token reservations use conservative byte-based input estimates and the configured output limit. They are not actual usage or dollar accounting. A session defaults to 20 calls, 60,000 reserved tokens, two concurrent workers, and three active hypotheses. Configure these limits when creating a session.
 
+With explicitly configured credentials, `pnpm exec vp run qualify:live` runs a synthetic provider smoke test with at most four calls and 40,000 reserved tokens. This command spends provider credits and is never run by CI. It uses an in-memory database and prints counts only. Supply TYPESAFE_API_KEY as well to exercise Jev; a passing reasoning-only run does not qualify Jev. A successful smoke test establishes connectivity and schema compatibility, not model quality or calibrated convergence.
+
 ## State and behavior
 
 SQLite stores events, command receipts, and a projection in a transaction. By default it lives in the platform user's local data directory, outside the checkout. Events are retained indefinitely in this alpha. A copied database contains private session context and access material; do not share it as a debug attachment.

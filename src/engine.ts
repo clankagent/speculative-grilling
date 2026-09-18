@@ -734,7 +734,12 @@ export function transition(original: Session, command: Command, actor: Actor): E
       });
       emit({
         type: "ExplorationChanged",
-        state: Object.values(s.work).some((w) => w.status === "running") ? "exploring" : "waiting",
+        state:
+          s.state === "paused"
+            ? "paused"
+            : Object.values(s.work).some((w) => w.status === "running")
+              ? "exploring"
+              : "waiting",
         epoch: s.epoch,
       });
       break;
