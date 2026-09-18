@@ -4,7 +4,23 @@ A non-blocking human clarification engine for agents.
 
 Explore plausible answers before asking the human. Use what those explorations reveal to decide which questions matter. An unresolved question blocks commitment, not computation.
 
-**Status: project definition. No runnable implementation yet.** This repository describes the intended complete system; it does not claim working Pi, MCP, or model integrations.
+**Status: runnable development alpha.** The shared engine, SQLite event store, bounded exploration runner, Pi extension, MCP v2 tools, human elicitation, and Tasks adapter are implemented. Tests exercise actual MCP dispatch, standalone stdio, and Pi extension loading. An opt-in convergence policy can withdraw low-impact questions with matching recorded outcomes. Live-provider qualification and broader semantic equivalence remain unfinished; this is not a production release.
+
+## Run locally
+
+Requires Node 24 and pnpm. Vite Plus is installed as a project dependency.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm exec vp run check
+pnpm exec vp test run
+pnpm exec vp run demo
+pnpm exec vp run benchmark
+```
+
+The demo uses synthetic data and makes no model calls. It explores alternatives, accepts an explicit answer, prunes incompatible work, exports committed decisions, and verifies replay after reopening the database. The benchmark validates a scripted comparison harness; it is not a measured improvement claim.
+
+See [running and configuring the adapters](docs/running.md) for Pi, MCP, provider configuration, and current limitations.
 
 ## The idea
 
@@ -30,6 +46,7 @@ The interaction contract comes first. The final choice of TUI, web sidecar, and 
 
 ## Read next
 
+- [Running guide](docs/running.md): configuration and implemented behavior.
 - [Product brief](docs/product-brief.md): scope and product boundaries.
 - [Architecture](docs/architecture.md): state, policy, reconciliation, and adapters.
 - [Roadmap](docs/roadmap.md): delivery sequence and acceptance criteria.

@@ -39,7 +39,7 @@ Durable sessions; typed graph and events; bounded simultaneous hypotheses; expan
 ## Deliberately open
 
 - Final project name and license.
-- Exact runtime, package versions, storage backend, and service hosting topology.
+- Service hosting topology beyond the initial local adapters. The alpha uses TypeScript, Node 24, SQLite, and pinned SDK versions.
 - Reasoning provider defaults and budget presets.
 - Final presentation surfaces and Pi interaction behavior during background work.
 - Supported client versions and compatibility policy beyond the initial MCP target.

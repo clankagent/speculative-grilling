@@ -1,6 +1,6 @@
 # Architecture proposal
 
-This is a design specification, not a description of implemented behavior. Public interfaces and implementation choices remain subject to validation.
+This describes the target architecture. See [the running guide](running.md) for the implementation's current boundaries. Public interfaces remain experimental.
 
 ## Dependency boundary
 
@@ -18,13 +18,13 @@ Suggested logical modules are protocol, graph, engine, voi, reasoning, jev, evid
 
 ## State and authority
 
-| Dimension | Proposed values |
-| --- | --- |
-| Authority | external_fact, derivable, agent_discretion, user_preference, user_required, approval_required |
-| Epistemic status | explicit, verified_fact, derived, provisional, hypothetical, rejected |
-| Commitment | uncommitted, branch_local, branch_invariant, committed |
-| Hypothesis lifecycle | active, blocked, dominated, merged, pruned, committed |
-| Question lifecycle | candidate, researching, speculating, queued, presented, deferred, answered, auto_resolved, made_irrelevant, withdrawn |
+| Dimension            | Proposed values                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Authority            | external_fact, derivable, agent_discretion, user_preference, user_required, approval_required                         |
+| Epistemic status     | explicit, verified_fact, derived, provisional, hypothetical, rejected                                                 |
+| Commitment           | uncommitted, branch_local, branch_invariant, committed                                                                |
+| Hypothesis lifecycle | active, blocked, dominated, merged, pruned, committed                                                                 |
+| Question lifecycle   | candidate, researching, speculating, queued, presented, deferred, answered, auto_resolved, made_irrelevant, withdrawn |
 
 A decision records its alternatives, dependencies, authority, consequences, reversibility, evidence, and revision. A hypothesis records assignments and their dependency scope, derived work, open decisions, and provenance. Plausibility weights are distinct from decision authority.
 

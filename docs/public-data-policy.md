@@ -8,7 +8,7 @@ Publish original project documentation, source, configuration templates with pla
 
 Use the designated public maintainer identity and a platform noreply email for commits. Do not copy global agent instructions or workstation configuration into project guidance.
 
-The root ignore file initially allows only the reviewed documentation files. Expanding the repository for implementation requires an explicit review of newly tracked paths. Ignore rules do not remove already-tracked data and do not replace reviewing the staged diff and commit metadata.
+The root ignore file allows reviewed documentation, source, tests, examples, scripts, CI, and package configuration. Runtime state and credential files are excluded. Expanding the repository requires an explicit review of newly tracked paths. Ignore rules do not remove already-tracked data and do not replace reviewing the staged diff and commit metadata. Run the public-data scanner before each commit.
 
 ## Runtime product requirements
 
