@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "A shared speculative clarification engine for Pi and MCP",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
@@ -11,6 +12,7 @@
     "demo": "tsx examples/session.ts",
     "benchmark": "tsx examples/benchmark.ts",
     "qualify:live": "tsx examples/qualify-live.ts",
+    "qualify:jev": "tsx examples/qualify-jev.ts",
     "check:public": "node scripts/check-public.mjs",
     "mcp": "tsx src/adapters/mcp-main.ts"
   },

@@ -75,6 +75,10 @@ Calls have timeouts and no automatic paid retry. Provider error bodies are withh
 
 With explicitly configured credentials, `pnpm exec vp run qualify:live` runs a synthetic provider smoke test with at most four calls and 40,000 reserved tokens. This command spends provider credits and is never run by CI. It uses an in-memory database and prints counts only. Supply TYPESAFE_API_KEY as well to exercise Jev; a passing reasoning-only run does not qualify Jev. A successful smoke test establishes connectivity and schema compatibility, not model quality or calibrated convergence.
 
+To qualify Jev independently, inject only TYPESAFE_API_KEY and run `pnpm exec vp run qualify:jev`. It submits one synthetic batch containing three judgments, checks the response schema, and verifies that judgments do not answer or commit the human-owned decision. It makes no reasoning calls and does not retry. Both qualification commands keep credentials in process memory, use an in-memory database, and withhold raw provider errors. Missing credentials fail before any network call.
+
+Validation checkpoint (2026-09-18): the live reasoning smoke test passed using OpenRouter's `anthropic/claude-haiku-4.5`: three completed reasoning calls, 23,935 reserved tokens, one queued question, and zero errors. Jev was disabled for that run and remains unverified against the live service. No quality or question-reduction claim follows from this connectivity check.
+
 ## State and behavior
 
 SQLite stores events, command receipts, and a projection in a transaction. By default it lives in the platform user's local data directory, outside the checkout. Events are retained indefinitely in this alpha. A copied database contains private session context and access material; do not share it as a debug attachment.
@@ -89,13 +93,13 @@ Runtime work belongs to the running adapter process. Restarting restores session
 
 ## Remaining release work
 
-- Live reasoning-provider and Jev qualification with authorized credentials.
+- Live Jev qualification and a broader reasoning-provider compatibility matrix.
 - Qualification and broader coverage of semantic convergence. The opt-in policy only compares recorded effects under strict guards; it does not claim that similar summaries prove equivalent designs.
 - Calibrated VoI estimates and real-user evaluation. Current scores are inspectable ordinal heuristics.
 - More selective reuse of in-flight results. Current invalidation intentionally errs toward discarding uncertain work.
 - Cross-question interpretation of free text. The current implementation stores free text as the explicit alternative for the selected question.
 - Automated repository/web evidence collection. Current evidence is explicitly submitted by the host agent; recording a source does not independently establish its truth.
 - A separate worker service for uninterrupted computation after a host exits, retention controls, and storage migrations beyond the initial schema.
-- Final license choice, packaging, and supported-client release matrix.
+- Packaging and supported-client release matrix. The license is MIT.
 
 These are limitations of the alpha, not features simulated by its examples. The target remains the complete system in the product brief.
