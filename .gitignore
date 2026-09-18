@@ -1,0 +1,13 @@
+# Initial publication allowlist. Expand deliberately as implementation begins.
+/*
+!/.gitignore
+!/README.md
+!/AGENTS.md
+!/CONTRIBUTING.md
+!/docs/
+/docs/*
+!/docs/product-brief.md
+!/docs/architecture.md
+!/docs/roadmap.md
+!/docs/integration-research.md
+!/docs/public-data-policy.md
