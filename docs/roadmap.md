@@ -4,7 +4,7 @@ Every stage contributes to the complete system. The sections below define accept
 
 ## Current checkpoint
 
-The development alpha implements the policy kernel, transactional SQLite service, bounded hypotheses, revision-checked workers, provider adapters, queue ranking, opt-in recorded-outcome convergence, Pi extension, and MCP tools/MRTR/Tasks. Regression tests cover state invariants, actual adapter dispatch, stdio process shutdown, and Pi extension loading. The synthetic demo and benchmark run without credentials. The MIT license is selected and an OpenRouter reasoning smoke test has passed. Live Jev qualification, calibrated evaluation, broader semantic reasoning, retention/migrations, and final packaging remain open.
+The development alpha implements the policy kernel, transactional SQLite service, bounded hypotheses, revision-checked workers, provider adapters, queue ranking, opt-in recorded-outcome convergence, Pi extension, and MCP tools/MRTR/Tasks. Regression tests cover state invariants, actual adapter dispatch, stdio process shutdown, and Pi extension loading. The synthetic demo and benchmark run without credentials. The MIT license is selected, and separate live OpenRouter reasoning and Jev judgment smoke tests have passed. Combined live workflow evaluation, calibrated evaluation, broader semantic reasoning, retention/migrations, and final packaging remain open.
 
 ## 1. Contracts and policy kernel
 

@@ -77,7 +77,7 @@ With explicitly configured credentials, `pnpm exec vp run qualify:live` runs a s
 
 To qualify Jev independently, inject only TYPESAFE_API_KEY and run `pnpm exec vp run qualify:jev`. It submits one synthetic batch containing three judgments, checks the response schema, and verifies that judgments do not answer or commit the human-owned decision. It makes no reasoning calls and does not retry. Both qualification commands keep credentials in process memory, use an in-memory database, and withhold raw provider errors. Missing credentials fail before any network call.
 
-Validation checkpoint (2026-09-18): the live reasoning smoke test passed using OpenRouter's `anthropic/claude-haiku-4.5`: three completed reasoning calls, 23,935 reserved tokens, one queued question, and zero errors. Jev was disabled for that run and remains unverified against the live service. No quality or question-reduction claim follows from this connectivity check.
+Validation checkpoint (2026-09-18): the live reasoning smoke test passed using OpenRouter's `anthropic/claude-haiku-4.5`: three completed reasoning calls, 23,935 reserved tokens, one queued question, and zero errors. Jev was disabled for that run. On 2026-09-19, the separate live Jev check passed: one batch returned three valid judgments, producing one assessment while preserving the human question and its uncommitted state. No quality or question-reduction claim follows from this connectivity check.
 
 ## State and behavior
 
@@ -93,7 +93,7 @@ Runtime work belongs to the running adapter process. Restarting restores session
 
 ## Remaining release work
 
-- Live Jev qualification and a broader reasoning-provider compatibility matrix.
+- Combined live workflow evaluation and a broader reasoning-provider compatibility matrix.
 - Qualification and broader coverage of semantic convergence. The opt-in policy only compares recorded effects under strict guards; it does not claim that similar summaries prove equivalent designs.
 - Calibrated VoI estimates and real-user evaluation. Current scores are inspectable ordinal heuristics.
 - More selective reuse of in-flight results. Current invalidation intentionally errs toward discarding uncertain work.
