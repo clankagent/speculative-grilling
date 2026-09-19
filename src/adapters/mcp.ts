@@ -22,6 +22,7 @@ import {
 } from "../application.js";
 import { type ExplorationRunner } from "../runner.js";
 import { sessionMetrics } from "../metrics.js";
+import type { Workspace } from "../web/server.js";
 
 const accessSchema = z.object({ sessionId: z.string(), secret: z.string().min(1).max(100) });
 const result = (value: unknown): CallToolResult => ({
@@ -74,11 +75,25 @@ export function createGrillMcpServer(
   service: GrillService,
   runner?: ExplorationRunner,
   taskHandlers: TaskHandlers = {},
+  workspace?: (access: SessionAccess) => Promise<Workspace>,
 ): McpServer {
   const server = new McpServer(
     { name: "speculative-grilling", version: "0.1.0" },
     { capabilities: { extensions: { "io.modelcontextprotocol/tasks": {} } } },
   );
+  if (workspace)
+    server.registerTool(
+      "grill_workspace",
+      {
+        description:
+          "Open the shared browser question workspace for this session. Present this private local link to the human. It supports simultaneous questions, exploration, deferred choices, graph inspection and exports without host-native elicitation forms.",
+        inputSchema: z.object({ access: accessSchema }),
+      },
+      async ({ access }) => {
+        service.read(access);
+        return result({ workspaceUrl: (await workspace(access)).url });
+      },
+    );
   server.registerTool(
     "grill_review_answers",
     {
@@ -87,6 +102,10 @@ export function createGrillMcpServer(
       inputSchema: answerReviewSchema.extend({ access: accessSchema }),
     },
     async ({ access, ...review }, ctx) => {
+      if (workspace) {
+        const ui = await workspace(access);
+        return result({ pending: true, reviewId: ui.queueReview(review), workspaceUrl: ui.url });
+      }
       const key = `review_${createHash("sha256").update(JSON.stringify(review)).digest("hex").slice(0, 24)}`;
       const response = acceptedContent(
         ctx.mcpReq.inputResponses,

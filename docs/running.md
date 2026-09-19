@@ -22,42 +22,37 @@ pnpm exec vp run benchmark
 
 The demo and benchmark use synthetic data. Neither requires credentials. The benchmark covers five scenarios and three policies under identical definitions, facts, authority and budget ceilings. Hidden answers enter through simulated human input. Scoring checks disagreement, false automatic choices and unresolved decisions. It tests policy behavior, not real model quality or human attention savings.
 
+## Browser workspace
+
+Run `pnpm exec vp run web` for the interactive, credential-free example. Open the printed link. It runs on loopback only and uses synthetic in-memory data; restarting creates a fresh example. No providers are loaded in this mode.
+
+For a real session, configure provider environment variables below, then run `pnpm exec vp run web --live --brief "Your brief"`. `--live --resume` reopens the latest browser session. The built equivalent is `node dist/src/web/main.js`. Starting the browser does not make a paid call. Click Explore alternatives to enable bounded work; subsequent answers and steering can continue it until paused. GRILL_WEB_PORT optionally selects a fixed local port.
+
+The workspace presents all available questions together, recorded branch findings and provenance, deferred decisions, reopening, a dependency view, direction input and Markdown export. A live event stream reflects changes from the engine and adapters. Draft answers survive background updates. Free text on a question is an explicit alternative; multi-question agent interpretations appear as a review proposal requiring acceptance.
+
+The launch link contains a local access capability in its fragment. The page exchanges it for an HttpOnly, SameSite=Strict cookie and removes the fragment from browser history. Keep launch links private. Provider keys are never sent to the browser. Host/origin checks, strict JSON mutations, a restrictive content policy and loopback binding prevent a remote page from reading or submitting session actions. This is a local-process trust boundary, not a multi-user remote service. Unaccepted review proposals are held in memory; they are not silently committed on restart.
+
 ## Pi
 
-From the installed checkout:
+Load the extension from a checkout:
 
 ```sh
 pnpm exec pi --extension ./src/adapters/pi.ts
 ```
 
-The extension exposes grill_start, grill_inspect, grill_command, and grill_review_answers to the agent. Human interaction uses the `/grill` command:
+Describe the task normally and ask Pi to start a grilling session. The grill_start tool returns a browser workspace link. Ctrl+Shift+G opens that workspace; `/grill` is an optional launcher only. The extension exposes grill_start, grill_inspect, grill_command and grill_review_answers to the agent. It no longer uses native selectors or confirmation dialogs for the question workflow.
 
-| Command                       | Behavior                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------- |
-| `/grill start <brief>`        | Start a durable session; existing sessions remain in storage                      |
-| `/grill questions`            | Open the current question queue and answer, defer, or delegate an eligible choice |
-| `/grill explore`              | Begin bounded background reasoning using configured providers                     |
-| `/grill status`               | Inspect state, budgets, failures, and commitments                                 |
-| `/grill graph`                | Inspect the graph without changing it                                             |
-| `/grill steer <text>`         | Record human steering and invalidate in-flight work using old context             |
-| `/grill reopen <decision-id>` | Reopen a decision and invalidate dependent commitments                            |
-| `/grill pause`                | Cancel current exploration cooperatively                                          |
-| `/grill resume`               | Allow exploration again; does not make a paid call by itself                      |
-| `/grill export`               | Put committed Markdown in the editor for review; does not publish it              |
-
-A persistent widget updates from the service event stream. Session credentials stay in private adapter storage and are not inserted into Pi's model-visible tool output. The current presentation uses Pi's built-in selectors and editor; a custom visual interface is not required.
-
-Accepted UI answers record answer and commitment events atomically and unlock dependent questions. Configured exploration can continue within the session budget. For free text spanning several decisions, grill_review_answers displays the original text and every proposed interpretation in a native confirmation. Acceptance commits the batch atomically; stale or invalid entries prevent the entire batch from committing. The host agent supplies interpretations; interpretation alone is never consent. `/grill forget` confirms deletion of the current session and its local history.
+The status widget stays compact while the browser owns human interaction. Agent interpretations return immediately as pending browser reviews; only acceptance there commits the batch. Browser and Pi use the same service and database. Closing Pi closes its workspace and worker; reopening Pi restores the durable session but does not silently retry paid work. Pi's ordinary chat authentication does not automatically configure the dedicated reasoning worker.
 
 ## MCP
 
 Build once, then configure a local stdio MCP host to launch `node` with the absolute path to `dist/src/adapters/mcp-main.js`. Launching through `pnpm exec tsx src/adapters/mcp-main.ts` also works for development. Do not use a script runner that writes task banners to stdout as the host's transport command.
 
-Available tools are grill_start, grill_inspect, grill_command, grill_questions, grill_review_answers, grill_explore, grill_export, and grill_forget. grill_start returns a session ID and private access token; keep both in the authorized host's local state. Possessing a session ID alone does not allow access. Reviewed interpretations and session deletion require genuine human confirmation through elicitation.
+Available tools are grill_start, grill_workspace, grill_inspect, grill_command, grill_questions, grill_review_answers, grill_explore, grill_export, and grill_forget. grill_start returns a session ID and private access token; keep both in the authorized host's local state. Possessing a session ID alone does not allow access. Call grill_workspace after grill_start and present its private local link to the human. It opens the shared browser UI on the server machine; it is not an embedded MCP App or remotely accessible hosted page. In the stdio adapter, interpreted answers are reviewed in this workspace. Session deletion still requires genuine human confirmation through elicitation. Programmatic handlers without a workspace factory retain the elicitation fallback.
 
 grill_command accepts validated domain commands but cannot answer on behalf of the human, delegate authority, inject worker results, or manufacture Jev assessments. Use a unique commandId for each logical mutation and reuse it only for retries of the same input.
 
-grill_questions uses MCP input_required elicitation. It can return several independent questions together, accepts free text as an explicit alternative, and treats refusal as deferral. The trusted MCP host is responsible for obtaining genuine human input.
+As a compatibility fallback, grill_questions uses MCP input_required elicitation. It can return several independent questions together, accepts free text as an explicit alternative, and treats refusal as deferral. The trusted MCP host is responsible for obtaining genuine human input.
 
 grill_explore returns a durable Task when the request advertises the io.modelcontextprotocol/tasks extension. Clients poll tasks/get, supply input through tasks/update, and cancel through tasks/cancel. Other clients receive a normal bounded result. Task IDs are unguessable bearer capabilities for that task; keep them private. Tasks are not enumerable.
 
@@ -119,6 +114,6 @@ Runtime work belongs to the running adapter process. Restarting restores session
 - Further evaluation of scoped result reuse and human-reviewed free-text interpretation.
 - Automated repository/web evidence collection. Current evidence is explicitly submitted by the host agent; recording a source does not independently establish its truth.
 - Optional separate worker deployment for uninterrupted computation after a host exits. Local migration, deletion and archive packaging are implemented.
-- Broader client testing. Current checks cover Node 24, Pi 0.85.1 loading/native UI contracts, MCP SDK 2.0.0 with protocol 2026-07-28, stdio, HTTP dispatch, MRTR and Tasks. They do not establish compatibility with every client or visual inspection of every host UI.
+- Broader client testing. Current checks cover Node 24, Pi 0.85.1 loading and shared browser actions, MCP SDK 2.0.0 with protocol 2026-07-28, stdio, HTTP dispatch, MRTR and Tasks. They do not establish compatibility with every client or visual inspection of every host UI.
 
 These are limitations of the alpha, not features simulated by its examples. The target remains the complete system in the product brief.

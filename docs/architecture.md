@@ -93,7 +93,7 @@ GrillStatus separates exploration state, queued input, actual blockers, active h
 
 ## Adapters
 
-Pi exposes a small tool and command surface plus the question/status views. Session references reconnect to the service's durable state. Focus handling and concurrent TUI updates need a real integration test before selecting the final presentation.
+Pi exposes agent tools and a shortcut to the shared browser workspace. Human answers and review happen in that workspace, not a sequence of native selectors. Session references reconnect to the service's durable state. The local stdio MCP adapter can provide the same browser workspace; host elicitation remains a compatibility fallback.
 
 The MCP target is protocol 2026-07-28 with the current TypeScript SDK, subject to exact package pinning. Application sessions have explicit handles independent of transport sessions. Tasks, MRTR and optional Apps are separate capabilities, with structured tool access for clients without rich UI.
 

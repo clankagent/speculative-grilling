@@ -21,7 +21,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vp test run",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-web.mjs",
+    "web": "tsx src/web/main.ts",
     "demo": "tsx examples/session.ts",
     "benchmark": "tsx examples/benchmark.ts",
     "qualify:live": "tsx examples/qualify-live.ts",

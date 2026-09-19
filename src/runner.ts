@@ -119,6 +119,9 @@ export class ExplorationRunner {
         }),
       );
       if (signal.aborted) break;
+      // Publish ready questions between waves, while later branch work continues.
+      // Wait for the entire wave so presentation revisions cannot stale sibling results.
+      this.service.execute(access, { type: "schedule" }, "system");
       state = this.service.read(access);
       for (const h of Object.values(state.hypotheses).filter(
         (h) => h.status === "active" && !h.convergenceDecision,

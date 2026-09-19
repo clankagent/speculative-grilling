@@ -41,7 +41,7 @@ Durable sessions; typed graph and events; bounded simultaneous hypotheses; expan
 - Final project name. The project is licensed under MIT.
 - Service hosting topology beyond the initial local adapters. The alpha uses TypeScript, Node 24, SQLite, and pinned SDK versions.
 - Reasoning provider defaults and budget presets.
-- Final presentation surfaces and Pi interaction behavior during background work.
+- Embedded MCP App support and additional host surfaces. The primary interaction is now a shared browser workspace; Pi native selectors are not the question interface.
 - Supported client versions and compatibility policy beyond the initial MCP target.
 - Numeric VoI weights, calibration thresholds, and semantic equivalence policy.
 

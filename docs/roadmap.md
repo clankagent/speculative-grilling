@@ -4,6 +4,8 @@ Every stage contributes to the complete system. The sections below define accept
 
 ## Current checkpoint
 
+The primary human surface is now the shared browser workspace: simultaneous questions, branch findings, deferred choices, reviewed interpretations, direction, reopening, a dependency view and exports. Pi supplies a shortcut and tools; local MCP supplies a workspace link. Native elicitation is a fallback. A credential-free interactive example exercises the real service with scripted analysis. Browser layouts and interactions were inspected at desktop and phone widths. An embedded MCP App and a spatial graph editor are not implemented.
+
 The development alpha implements the policy kernel, transactional SQLite service, bounded hypotheses, scoped workers, provider adapters, queue ranking, guarded semantic convergence, Pi extension, and MCP tools/MRTR/Tasks. The combined live workflow passes through reasoning, Jev, a simulated human answer, committed export and replay. Reviewed multi-answer commits, session deletion, schema migration, CLI/library packaging and a matched-policy fixture suite are implemented. Broader live-model quality studies, real-user timing and threshold calibration remain evaluation work. The license is MIT.
 
 ## 1. Contracts and policy kernel

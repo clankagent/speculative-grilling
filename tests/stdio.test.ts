@@ -49,6 +49,45 @@ test("standalone stdio process speaks MCP and closes cleanly without provider cr
     expect(message.result.tools.some((tool: { name: string }) => tool.name === "grill_start")).toBe(
       true,
     );
+    expect(
+      message.result.tools.some((tool: { name: string }) => tool.name === "grill_workspace"),
+    ).toBe(true);
+    const call = async (id: number, name: string, args: unknown) => {
+      child.stdin.write(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: {
+            name,
+            arguments: args,
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientInfo": {
+                name: "synthetic-stdio-test",
+                version: "1.0.0",
+              },
+              "io.modelcontextprotocol/clientCapabilities": {},
+            },
+          },
+        }) + "\n",
+      );
+      await expect
+        .poll(() => output.some((line) => JSON.parse(line).id === id), { timeout: 10000 })
+        .toBe(true);
+      const response = JSON.parse(output.find((line) => JSON.parse(line).id === id)!);
+      expect(response.error).toBeUndefined();
+      return JSON.parse(response.result.content[0].text);
+    };
+    const started = await call(2, "grill_start", { brief: "Synthetic notebook" });
+    const workspace = await call(3, "grill_workspace", { access: started });
+    const url = new URL(workspace.workspaceUrl);
+    const connected = await fetch(`${url.origin}/api/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: url.hash.slice(1) }),
+    });
+    expect(connected.status).toBe(200);
     child.stdin.end();
     const [code] = await exited;
     expect(code).toBe(0);

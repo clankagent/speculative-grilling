@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speculative Grilling · Workspace</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to questions</a>
+    <div class="shell">
+      <aside class="rail">
+        <div class="brand">
+          <span class="mark" aria-hidden="true">↗</span><span>Speculative <br />Grilling</span>
+        </div>
+        <p class="rail-label">WORKSPACE</p>
+        <nav aria-label="Workspace">
+          <button data-view="questions" aria-current="page">
+            Needs you <span id="question-count">—</span></button
+          ><button data-view="deferred">Deferred <span id="deferred-count">—</span></button
+          ><button data-view="resolved">Decisions <span id="resolved-count">—</span></button
+          ><button data-view="graph">Decision graph</button
+          ><button data-view="spec">Specification</button>
+        </nav>
+        <div class="rail-bottom">
+          <span class="dot"></span><span id="connection">Connecting</span>
+          <p>Answers guide the design.<br />Exploration keeps moving.</p>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <span
+            >Design session <span class="separator">/</span>
+            <strong id="mode">Connecting…</strong></span
+          ><button id="export">Export specification ↓</button>
+        </header>
+        <div id="notice" role="status"></div>
+        <div id="error" role="alert" hidden></div>
+        <div id="reviews"></div>
+        <section class="brief">
+          <div>
+            <p class="eyebrow">THE BRIEF</p>
+            <p id="brief-text">Opening your workspace…</p>
+          </div>
+          <button id="steer-open">Add direction</button>
+        </section>
+        <div class="columns">
+          <main id="content" tabindex="-1">
+            <div class="section-heading">
+              <div>
+                <h1 id="view-title">Needs you</h1>
+                <p id="view-description">
+                  Answer in any order. Independent work can continue while you decide.
+                </p>
+              </div>
+            </div>
+            <div id="items"></div>
+          </main>
+          <aside class="exploration" aria-label="Exploration">
+            <div class="aside-heading">
+              <h2>Exploring</h2>
+              <span id="activity-state">Ready</span>
+            </div>
+            <p id="worker-description"></p>
+            <button class="primary" id="explore">Explore alternatives</button>
+            <p class="small" id="budget"></p>
+            <div id="branches"></div>
+            <h2 class="subheading">Recent work</h2>
+            <div id="work"></div>
+            <h2 class="subheading">Direction</h2>
+            <div id="context"></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <dialog id="steer-dialog">
+      <form id="steer-form">
+        <div class="dialog-heading">
+          <h2>Add direction</h2>
+          <button type="button" id="steer-close" aria-label="Close">×</button>
+        </div>
+        <p>
+          Give the exploration a constraint or a correction. This does not silently answer any
+          question.
+        </p>
+        <label for="steer-text">What should the design take into account?</label
+        ><textarea id="steer-text" required maxlength="20000" rows="5"></textarea
+        ><button class="primary" type="submit">Add to session</button>
+      </form>
+    </dialog>
+  </body>
+</html>

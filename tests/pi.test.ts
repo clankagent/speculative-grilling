@@ -1,14 +1,10 @@
 import { expect, test, vi } from "vite-plus/test";
-import {
-  discoverAndLoadExtensions,
-  type ExtensionContext,
-  type ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import { discoverAndLoadExtensions, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("real Pi loader registers tools and human command answers the same durable graph", async () => {
+test("real Pi loader connects the browser workspace and queues human review without native dialogs", async () => {
   const dir = mkdtempSync(join(tmpdir(), "grill-pi-test-"));
   vi.stubEnv("GRILL_DATABASE", join(dir, "sessions.sqlite"));
   vi.stubEnv("GRILL_REASONING_API_KEY", "");
@@ -43,7 +39,22 @@ test("real Pi loader registers tools and human command answers the same durable 
       await handler({ type: "session_start", reason: "startup" }, ctx);
     const call = async (name: string, args: unknown) =>
       extension.tools.get(name)!.definition.execute("test", args, undefined, undefined, ctx);
-    await call("grill_start", { brief: "Synthetic notebook" });
+    const started = await call("grill_start", { brief: "Synthetic notebook" });
+    const startText = started.content.find((c) => c.type === "text");
+    if (startText?.type !== "text") throw new Error("Missing workspace");
+    const url = new URL(JSON.parse(startText.text).workspaceUrl);
+    const connected = await fetch(`${url.origin}/api/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: url.hash.slice(1) }),
+    });
+    const cookie = connected.headers.get("set-cookie")!.split(";")[0]!;
+    const post = (value: unknown) =>
+      fetch(`${url.origin}/api/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie },
+        body: JSON.stringify(value),
+      });
     await call("grill_command", {
       commandId: "propose",
       command: JSON.stringify({
@@ -63,7 +74,18 @@ test("real Pi loader registers tools and human command answers the same durable 
       commandId: "schedule",
       command: JSON.stringify({ type: "schedule" }),
     });
-    await extension.commands.get("grill")!.handler("questions", ctx as ExtensionCommandContext);
+    const snapshot = await (await fetch(`${url.origin}/api/state`, { headers: { cookie } })).json();
+    expect(
+      (
+        await post({
+          type: "answer",
+          id: "links",
+          revision: snapshot.state.decisions.links.revision,
+          response: { action: "answer", answer: "yes" },
+        })
+      ).status,
+    ).toBe(200);
+    expect(ctx.ui.select).not.toHaveBeenCalled();
     const graph = await call("grill_inspect", { view: "graph" });
     const content = graph.content.find((c) => c.type === "text");
     expect(content?.type).toBe("text");
@@ -94,10 +116,12 @@ test("real Pi loader registers tools and human command answers the same durable 
       sourceText: "No expiry",
       answers: [{ decisionId: "expiry", revision: 1, optionId: "no" }],
     });
-    expect(reviewed.details).toEqual({ accepted: true });
-    expect(ctx.ui.confirm).toHaveBeenCalledWith(
-      "Review interpreted answers",
-      expect.stringContaining("No expiry"),
+    expect(reviewed.details).toEqual({ pending: true });
+    expect(ctx.ui.confirm).not.toHaveBeenCalled();
+    const pending = await (await fetch(`${url.origin}/api/state`, { headers: { cookie } })).json();
+    expect(pending.state.decisions.expiry.committed).toBe(false);
+    expect((await post({ type: "review", id: pending.reviews[0].id, accept: true })).status).toBe(
+      200,
     );
   } finally {
     for (const handler of extension.handlers.get("session_shutdown") ?? [])
