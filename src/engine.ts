@@ -81,6 +81,34 @@ export function transition(original: Session, command: Command, actor: Actor): E
     );
     for (const id of input.dependencies)
       ensure(s.decisions[id], "DEPENDENCY", "Dependency must already exist; cycles are forbidden");
+    for (const id of input.dependencies) {
+      const parent = get(id);
+      if (
+        parent.question !== "withdrawn" ||
+        !parent.reason.startsWith("Converged recorded outcomes")
+      )
+        continue;
+      update("QuestionChanged", {
+        ...parent,
+        question: "candidate",
+        reason: "New dependent decision requires reconsidering convergence",
+      });
+      let active = Object.values(s.hypotheses).filter(
+        (h) => h.status === "active" && h.convergenceDecision !== id,
+      ).length;
+      for (const h of Object.values(s.hypotheses))
+        if (h.convergenceDecision === id && ["active", "merged"].includes(h.status))
+          emit({
+            type: "HypothesisChanged",
+            hypothesis: {
+              ...h,
+              status: active++ < s.budget.maxHypotheses ? "active" : "suspended",
+              mergedInto: null,
+              convergenceDecision: null,
+              reason: "New dependent decision invalidated convergence",
+            },
+          });
+    }
     for (const [id, value] of Object.entries(input.when)) {
       ensure(input.dependencies.includes(id), "DEPENDENCY", "Condition must be a dependency");
       option(get(id), value);
@@ -228,10 +256,39 @@ export function transition(original: Session, command: Command, actor: Actor): E
             question: "queued",
             reason: `A human-owned choice affects design (impact ${d.impact}/10; divergence ${d.divergence}/10)`,
           });
+          const assessment = s.assessments[d.id];
+          if (assessment?.revision === d.revision)
+            emit({
+              type: "AssessmentRecorded",
+              assessment: { ...assessment, revision: d.revision + 1 },
+            });
         }
       }
   };
   switch (command.type) {
+    case "answerBatch": {
+      human();
+      ensure(
+        new Set(command.answers.map((a) => a.decisionId)).size === command.answers.length,
+        "ANSWER",
+        "Each decision may appear once",
+      );
+      const pending = [...command.answers];
+      while (pending.length) {
+        const i = pending.findIndex((a) => applicable(s, get(a.decisionId)));
+        ensure(i >= 0, "DEPENDENCY", "Reviewed answers have unresolved prerequisites");
+        const [answer] = pending.splice(i, 1);
+        const changes = transition(s, { type: "answer", ...answer!, commit: true }, "human");
+        for (const change of changes) emit(change);
+        s.revision += changes.length;
+      }
+      emit({
+        type: "AnswersReviewed",
+        sourceText: command.sourceText,
+        decisionIds: command.answers.map((a) => a.decisionId),
+      });
+      break;
+    }
     case "assess": {
       ensure(
         actor === "system",
@@ -329,6 +386,7 @@ export function transition(original: Session, command: Command, actor: Actor): E
         question: "answered",
         reason: "Explicit human answer",
       });
+      if (command.commit) update("DecisionCommitted", { ...get(d.id), committed: true });
       break;
     }
     case "resolve": {
@@ -545,7 +603,12 @@ export function transition(original: Session, command: Command, actor: Actor): E
         const signatures = results.map((w) =>
           JSON.stringify([...new Set(w!.observableEffects.map((item) => item.trim()))].sort()),
         );
-        if (!signatures.every((signature) => signature === signatures[0])) continue;
+        const judgedEquivalent =
+          (assessment.equivalence ?? 0) >= 0.99 &&
+          assessment.workIds?.length === results.length &&
+          results.every((w) => assessment.workIds!.includes(w!.id));
+        if (!signatures.every((signature) => signature === signatures[0]) && !judgedEquivalent)
+          continue;
         const target = worlds[0]!;
         for (const h of worlds)
           emit({
@@ -591,6 +654,12 @@ export function transition(original: Session, command: Command, actor: Actor): E
       }
       break;
     }
+    case "exhaustBudget": {
+      ensure(actor === "system", "AUTHORITY", "Budget status is an internal operation");
+      if (s.state !== "paused")
+        emit({ type: "ExplorationChanged", state: "budget_exhausted", epoch: s.epoch });
+      break;
+    }
     case "pause":
     case "resume": {
       emit({
@@ -612,6 +681,18 @@ export function transition(original: Session, command: Command, actor: Actor): E
       ensure(s.state !== "paused", "PAUSED", "Exploration is paused");
       const h = s.hypotheses[command.hypothesisId];
       ensure(h?.status === "active", "STATE", "Hypothesis is not active");
+      const dependencyIds = command.dependencyIds ?? Object.keys(s.decisions);
+      for (const id of dependencyIds)
+        ensure(
+          get(id).dependencies.every((parent) => dependencyIds.includes(parent)),
+          "DEPENDENCY",
+          "Work scope must include prerequisite decisions",
+        );
+      ensure(
+        Object.keys(h.assignments).every((id) => dependencyIds.includes(id)),
+        "DEPENDENCY",
+        "Work must retain every hypothetical premise",
+      );
       ensure(
         !h.convergenceDecision,
         "STATE",
@@ -640,9 +721,7 @@ export function transition(original: Session, command: Command, actor: Actor): E
           kind: command.kind,
           hypothesisId: h.id,
           epoch: s.epoch,
-          dependencies: Object.fromEntries(
-            Object.values(s.decisions).map((d) => [d.id, d.revision]),
-          ),
+          dependencies: Object.fromEntries(dependencyIds.map((id) => [id, get(id).revision])),
           status: "running",
           summary: "",
           reservedTokens: command.reserveTokens,
@@ -718,6 +797,7 @@ export function transition(original: Session, command: Command, actor: Actor): E
         work: {
           ...work,
           status,
+          ...(command.type === "failWork" ? { failureCode: command.failureCode } : {}),
           observableEffects:
             command.type === "completeWork" && !stale ? command.observableEffects : [],
           exhausted:
@@ -726,6 +806,7 @@ export function transition(original: Session, command: Command, actor: Actor): E
             command.decisions.length === 0 &&
             command.exhausted,
           provider: command.type === "completeWork" ? command.provider : work.provider,
+          ...(command.type === "completeWork" && command.usage ? { usage: command.usage } : {}),
           summary:
             command.type === "completeWork" && !stale
               ? command.summary

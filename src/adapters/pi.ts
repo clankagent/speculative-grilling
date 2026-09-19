@@ -1,7 +1,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { GrillService, type SessionAccess } from "../storage.js";
-import { agentCommand, humanResponse, status, safeError } from "../application.js";
+import {
+  agentCommand,
+  humanResponse,
+  status,
+  safeError,
+  answerReviewPreview,
+  acceptAnswerReview,
+} from "../application.js";
 import { configuredProviders } from "../providers.js";
 import { ExplorationRunner } from "../runner.js";
 
@@ -64,6 +71,51 @@ export default function grillExtension(pi: ExtensionAPI) {
     service?.close();
     service = undefined;
     access = undefined;
+  });
+  pi.registerTool({
+    name: "grill_review_answers",
+    label: "Review interpreted answers",
+    description:
+      "Propose structured interpretations of the human's free text. A native confirmation shows every proposed choice before anything is committed.",
+    parameters: Type.Object({
+      sourceText: Type.String(),
+      answers: Type.Array(
+        Type.Object({
+          decisionId: Type.String(),
+          revision: Type.Integer(),
+          optionId: Type.Optional(Type.String()),
+          other: Type.Optional(Type.String()),
+        }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx) {
+      try {
+        if (!ctx.hasUI)
+          return {
+            content: [{ type: "text", text: "Human review requires an interactive Pi session" }],
+            details: { accepted: false },
+          };
+        const s = requireService(),
+          a = requireAccess();
+        const accepted = await ctx.ui.confirm(
+          "Review interpreted answers",
+          answerReviewPreview(s, a, params),
+        );
+        if (accepted) acceptAnswerReview(s, a, params);
+        update(ctx);
+        return {
+          content: [
+            { type: "text", text: JSON.stringify({ accepted, status: status(s.read(a)) }) },
+          ],
+          details: { accepted },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: safeError(error) }],
+          details: { accepted: false },
+        };
+      }
+    },
   });
   pi.registerTool({
     name: "grill_start",
@@ -152,7 +204,7 @@ export default function grillExtension(pi: ExtensionAPI) {
   });
   pi.registerCommand("grill", {
     description:
-      "Speculative clarification: start, questions, explore, status, graph, steer, reopen, pause, resume, export",
+      "Speculative clarification: start, questions, explore, status, graph, steer, reopen, pause, resume, export, forget",
     handler: async (args, ctx) => {
       try {
         const [action = "status", ...rest] = args.trim().split(/\s+/);
@@ -199,6 +251,12 @@ export default function grillExtension(pi: ExtensionAPI) {
             if (option)
               humanResponse(s, a, q.id, q.revision, { action: "answer", answer: option.id });
           }
+          if (runner && s.read(a).state !== "paused") {
+            void runner.start(a).then(
+              () => update(ctx),
+              () => ctx.ui.notify("Exploration stopped; inspect session status", "error"),
+            );
+          }
         } else if (action === "explore") {
           if (!runner) {
             ctx.ui.notify(
@@ -221,7 +279,22 @@ export default function grillExtension(pi: ExtensionAPI) {
           if (value) s.execute(a, { type: "steer", text: value }, "human");
         } else if (action === "reopen")
           s.execute(a, { type: "reopen", decisionId: argument }, "human");
-        else if (action === "export") {
+        else if (action === "forget") {
+          if (
+            await ctx.ui.confirm(
+              "Delete this clarification session?",
+              "This removes its decisions, history, and saved adapter access from the local database. Exported files and backups remain separate.",
+            )
+          ) {
+            unsubscribe?.abort();
+            if (runner) await runner.stop(a);
+            else s.execute(a, { type: "pause" }, "human");
+            s.deleteSession(a);
+            access = undefined;
+            ctx.ui.setWidget("speculative-grilling", []);
+            ctx.ui.notify("Clarification session deleted", "info");
+          }
+        } else if (action === "export") {
           ctx.ui.setEditorText(s.export(a));
           ctx.ui.notify(
             "Committed specification copied into the editor; review before sending or saving",

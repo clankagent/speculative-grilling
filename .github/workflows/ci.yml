@@ -22,5 +22,7 @@ jobs:
       - run: pnpm exec vp run check:public
       - run: pnpm exec vp test run
       - run: pnpm exec vp run build
+      - run: node dist/src/cli.js help
+      - run: pnpm pack
       - run: pnpm exec vp run demo
       - run: pnpm exec vp run benchmark

@@ -38,6 +38,7 @@ export class ExplorationRunner {
   }
   private async run(access: SessionAccess, rounds: number, signal: AbortSignal) {
     const seen = new Set<string>();
+    let budgetBlocked = false;
     for (let round = 0; round < rounds && !signal.aborted; round++) {
       let state = this.service.read(access);
       if (state.state === "paused") return;
@@ -52,28 +53,67 @@ export class ExplorationRunner {
           const workId = randomUUID();
           try {
             state = this.service.read(access);
+            const reservation = this.reasoning.reserveTokens(state, hypothesis.id);
+            const hasPending = Object.values(state.decisions).some(
+              (d) => !d.selection && d.question !== "withdrawn",
+            );
+            if (
+              this.judgment &&
+              hasPending &&
+              (state.calls + 2 > state.budget.maxCalls ||
+                state.tokensReserved + reservation + this.judgment.reserveTokens(state) >
+                  state.budget.maxTokens)
+            ) {
+              budgetBlocked = true;
+              return;
+            }
             this.service.execute(
               access,
               {
                 type: "startWork",
                 workId,
                 hypothesisId: hypothesis.id,
-                reserveTokens: this.reasoning.reserveTokens(state, hypothesis.id),
+                reserveTokens: reservation,
+                ...(this.reasoning.dependencyIds
+                  ? { dependencyIds: this.reasoning.dependencyIds(state, hypothesis.id) }
+                  : {}),
               },
               "system",
             );
-            const result = expansionSchema.parse(
-              await this.reasoning.expand(state, hypothesis.id, signal),
-            );
+            const { usage, ...body } = await this.reasoning.expand(state, hypothesis.id, signal);
+            const result = expansionSchema.parse(body);
             this.service.execute(
               access,
-              { type: "completeWork", workId, ...result, provider: this.reasoning.name },
+              {
+                type: "completeWork",
+                workId,
+                ...result,
+                provider: this.reasoning.name,
+                ...(usage ? { usage } : {}),
+              },
               "system",
             );
           } catch (error) {
             if (this.service.read(access).work[workId]?.status === "running")
-              this.service.execute(access, { type: "failWork", workId }, "system");
-            if (error instanceof DomainError && error.code === "BUDGET") return;
+              this.service.execute(
+                access,
+                {
+                  type: "failWork",
+                  workId,
+                  failureCode:
+                    error instanceof DomainError &&
+                    ["PROVIDER_SCHEMA", "PROVIDER_JSON"].includes(error.code)
+                      ? error.code
+                      : error instanceof DomainError
+                        ? "INVALID_RESULT"
+                        : "PROVIDER",
+                },
+                "system",
+              );
+            if (error instanceof DomainError && error.code === "BUDGET") {
+              budgetBlocked = true;
+              return;
+            }
             // Provider messages can contain secrets or raw context; retain only the safe failure event.
           }
         }),
@@ -116,7 +156,9 @@ export class ExplorationRunner {
     }
     if (!signal.aborted && this.judgment) {
       const state = this.service.read(access);
-      const h = Object.values(state.hypotheses).find((h) => h.status === "active");
+      const h = Object.values(state.hypotheses).find(
+        (h) => h.status === "active" && !h.convergenceDecision,
+      );
       if (h && Object.values(state.decisions).some((d) => !d.selection)) {
         const workId = randomUUID();
         try {
@@ -138,6 +180,7 @@ export class ExplorationRunner {
               type: "completeWork",
               workId,
               summary: `Batched judgments from ${this.judgment.name}`,
+              provider: this.judgment.name,
               decisions: [],
             },
             "system",
@@ -145,7 +188,8 @@ export class ExplorationRunner {
           if (this.service.read(access).work[workId]?.status === "completed")
             for (const assessment of judgments)
               this.service.execute(access, { type: "assess", assessment }, "system");
-        } catch {
+        } catch (error) {
+          if (error instanceof DomainError && error.code === "BUDGET") budgetBlocked = true;
           if (this.service.read(access).work[workId]?.status === "running")
             this.service.execute(access, { type: "failWork", workId }, "system");
         }
@@ -154,6 +198,7 @@ export class ExplorationRunner {
     if (!signal.aborted) {
       this.service.execute(access, { type: "converge" }, "system");
       this.service.execute(access, { type: "schedule" }, "system");
+      if (budgetBlocked) this.service.execute(access, { type: "exhaustBudget" }, "system");
     }
   }
 }

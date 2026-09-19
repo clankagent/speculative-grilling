@@ -97,3 +97,68 @@ test("provider exceptions are not persisted with credentials or request contents
   expect(Object.values(service.read(access).work)[0]?.status).toBe("failed");
   service.close();
 });
+
+test("Jev equivalence questions carry actual branch outcomes and bind the result to work IDs", async () => {
+  const s = new GrillService(":memory:");
+  try {
+    const a = s.start("Synthetic convergence", {}, { semanticConvergence: true });
+    s.execute(a, {
+      type: "propose",
+      decision: {
+        id: "order",
+        prompt: "Order?",
+        authority: "user_preference",
+        impact: 1,
+        options: [
+          { id: "a", label: "A" },
+          { id: "b", label: "B" },
+        ],
+      },
+    });
+    s.execute(a, { type: "fork", hypothesisId: "root", decisionId: "order" });
+    for (const [i, h] of Object.values(s.read(a).hypotheses)
+      .filter((h) => h.status === "active")
+      .entries()) {
+      s.execute(
+        a,
+        { type: "startWork", workId: `w${i}`, hypothesisId: h.id, reserveTokens: 100 },
+        "system",
+      );
+      s.execute(
+        a,
+        {
+          type: "completeWork",
+          workId: `w${i}`,
+          summary: "Recorded outcome",
+          decisions: [],
+          exhausted: true,
+          observableEffects: [i ? "Alphabetical titles" : "Titles sorted A to Z"],
+          provider: "fixture",
+        },
+        "system",
+      );
+    }
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.questions.equivalence_0).toBeDefined();
+      expect(JSON.parse(body.state).outcomes).toHaveLength(2);
+      return Response.json({
+        model: "jev-latest",
+        answers: {
+          materiality_0: { type: "noul", noul: 0.01 },
+          ownership_0: { type: "noul", noul: 0.5 },
+          speculation_0: { type: "noul", noul: 1 },
+          equivalence_0: { type: "noul", noul: 0.999 },
+        },
+      });
+    });
+    const results = await new JevProvider("synthetic-key", fetcher).evaluate(
+      s.read(a),
+      new AbortController().signal,
+    );
+    expect(results[0]?.workIds).toEqual(["w0", "w1"]);
+    expect(results[0]?.equivalence).toBe(0.999);
+  } finally {
+    s.close();
+  }
+});

@@ -4,7 +4,7 @@ A non-blocking human clarification engine for agents.
 
 Explore plausible answers before asking the human. Use what those explorations reveal to decide which questions matter. An unresolved question blocks commitment, not computation.
 
-**Status: runnable development alpha.** The shared engine, SQLite event store, bounded exploration runner, Pi extension, MCP v2 tools, human elicitation, and Tasks adapter are implemented. Tests exercise actual MCP dispatch, standalone stdio, and Pi extension loading. An opt-in convergence policy can withdraw low-impact questions with matching recorded outcomes. Live OpenRouter reasoning and Jev judgment smoke tests have passed; broader semantic equivalence and calibrated evaluation remain unfinished. This is not a production release.
+**Status: usable development alpha.** The combined live reasoning/Jev/answer/export/replay workflow has passed. The shared engine, SQLite store, bounded exploration, Pi extension, MCP tools/MRTR/Tasks, reviewed multi-question answers, guarded convergence, scoped work reuse, deletion/migration, CLI and archive packaging are implemented. Model quality and semantic thresholds still need broader calibration. This is not a production release.
 
 ## Run locally
 

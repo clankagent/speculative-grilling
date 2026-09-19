@@ -38,11 +38,16 @@ export function sessionMetrics(state: Session, events: GrillEvent[]) {
     ).length,
     providerCallsReserved: state.calls,
     tokensReserved: state.tokensReserved,
+    measuredCalls: work.filter((w) => w.usage).length,
+    reportedInputTokens: work.reduce((sum, w) => sum + (w.usage?.inputTokens ?? 0), 0),
+    reportedOutputTokens: work.reduce((sum, w) => sum + (w.usage?.outputTokens ?? 0), 0),
+    estimatedCostUsd: work.reduce((sum, w) => sum + (w.usage?.estimatedCostUsd ?? 0), 0),
+    usageCoverageComplete: work.length > 0 && work.every((w) => Boolean(w.usage)),
     workCompleted: work.filter((w) => w.status === "completed").length,
     workStale: work.filter((w) => w.status === "stale").length,
     workFailed: work.filter((w) => w.status === "failed").length,
     answerLatencyMs: latencies,
     humanActiveTimeMs: null,
-    note: "Queue latency includes idle time. Human active time and actual provider billing are not inferred from it. Reservations are upper bounds, not measured token usage.",
+    note: "Queue latency includes idle time. Human active time is not inferred. Reported usage covers only calls carrying provider usage; SDK cost estimates are not billing receipts. Reservations are not measured token usage.",
   };
 }

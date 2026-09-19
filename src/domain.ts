@@ -67,6 +67,16 @@ export type Hypothesis = {
   parents: string[];
   convergenceDecision?: string | null;
 };
+export const usageSchema = z
+  .object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative(),
+    estimatedCostUsd: z.number().nonnegative(),
+  })
+  .strict();
+export type ProviderUsage = z.infer<typeof usageSchema>;
 export type Work = {
   id: string;
   kind: "reasoning" | "judgment";
@@ -79,6 +89,8 @@ export type Work = {
   observableEffects: string[];
   exhausted: boolean;
   provider: string;
+  usage?: ProviderUsage;
+  failureCode?: string;
 };
 export const policySchema = z
   .object({
@@ -103,6 +115,8 @@ export const assessmentSchema = z
     materiality: z.number().min(0).max(1),
     userOwned: z.number().min(0).max(1),
     safeToSpeculate: z.number().min(0).max(1),
+    equivalence: z.number().min(0).max(1).optional(),
+    workIds: z.array(idSchema).max(16).optional(),
   })
   .strict();
 export type Assessment = z.infer<typeof assessmentSchema>;
@@ -124,6 +138,7 @@ export type Session = {
   tokensReserved: number;
 };
 export type EventData =
+  | { type: "AnswersReviewed"; sourceText: string; decisionIds: string[] }
   | { type: "SessionStarted"; session: Session }
   | { type: "ContextAdded" | "SessionSteered"; context: string; epoch: number }
   | {
@@ -154,7 +169,20 @@ export type GrillEvent = {
   data: EventData;
 };
 
+export const reviewedAnswerSchema = z
+  .object({
+    decisionId: idSchema,
+    revision: z.number().int(),
+    optionId: idSchema.optional(),
+    other: text.optional(),
+  })
+  .strict();
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("answerBatch"),
+    sourceText: text,
+    answers: z.array(reviewedAnswerSchema).min(1).max(20),
+  }),
   z.object({ type: z.literal("assess"), assessment: assessmentSchema }),
   z.object({ type: z.literal("propose"), decision: decisionSchema }),
   z.object({ type: z.literal("evidence"), evidence: evidenceSchema }),
@@ -166,6 +194,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     revision: z.number().int(),
     optionId: idSchema.optional(),
     other: text.optional(),
+    commit: z.boolean().default(false),
   }),
   z.object({
     type: z.literal("resolve"),
@@ -192,12 +221,14 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("converge") }),
   z.object({ type: z.literal("pause") }),
   z.object({ type: z.literal("resume") }),
+  z.object({ type: z.literal("exhaustBudget") }),
   z.object({
     type: z.literal("startWork"),
     kind: z.enum(["reasoning", "judgment"]).default("reasoning"),
     workId: idSchema,
     hypothesisId: idSchema,
     reserveTokens: z.number().int().min(1).max(100000),
+    dependencyIds: z.array(idSchema).max(1000).optional(),
   }),
   z.object({
     type: z.literal("completeWork"),
@@ -207,8 +238,15 @@ export const commandSchema = z.discriminatedUnion("type", [
     observableEffects: z.array(z.string().min(1).max(2000)).max(30).default([]),
     exhausted: z.boolean().default(false),
     provider: z.string().max(200).default("unspecified"),
+    usage: usageSchema.optional(),
   }),
-  z.object({ type: z.literal("failWork"), workId: idSchema }),
+  z.object({
+    type: z.literal("failWork"),
+    workId: idSchema,
+    failureCode: z
+      .enum(["PROVIDER", "PROVIDER_SCHEMA", "PROVIDER_JSON", "INVALID_RESULT", "INTERRUPTED"])
+      .default("INTERRUPTED"),
+  }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export class DomainError extends Error {

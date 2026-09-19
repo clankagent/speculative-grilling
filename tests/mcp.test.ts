@@ -96,6 +96,60 @@ test("actual MCP v2 HTTP dispatch lists tools and routes commands through the en
   });
   expect(rejected.result?.["isError"]).toBe(true);
 });
+
+test("MCP answer interpretations require human review before committing", async () => {
+  const { service, request } = setup();
+  const access = service.start("Synthetic review");
+  service.execute(access, {
+    type: "propose",
+    decision: {
+      id: "links",
+      prompt: "Public links?",
+      authority: "user_required",
+      options: [
+        { id: "yes", label: "Yes" },
+        { id: "no", label: "No" },
+      ],
+    },
+  });
+  const args = {
+    access,
+    sourceText: "Keep it private",
+    answers: [{ decisionId: "links", revision: 1, optionId: "no" }],
+  };
+  const initial = await request("tools/call", { name: "grill_review_answers", arguments: args });
+  expect(initial.result?.["resultType"]).toBe("input_required");
+  expect(service.read(access).decisions.links?.selection).toBeNull();
+  const key = Object.keys(initial.result?.["inputRequests"] as object)[0]!;
+  const accepted = await request("tools/call", {
+    name: "grill_review_answers",
+    arguments: args,
+    inputResponses: { [key]: { action: "accept", content: { confirm: true } } },
+  });
+  expect(accepted.error).toBeUndefined();
+  expect(service.read(access).decisions.links?.committed).toBe(true);
+  const retry = await request("tools/call", {
+    name: "grill_review_answers",
+    arguments: args,
+    inputResponses: { [key]: { action: "accept", content: { confirm: true } } },
+  });
+  expect(retry.error).toBeUndefined();
+});
+
+test("MCP session deletion requires a human confirmation", async () => {
+  const { service, request } = setup();
+  const access = service.start("Synthetic deletion");
+  const initial = await request("tools/call", { name: "grill_forget", arguments: { access } });
+  expect(initial.result?.["resultType"]).toBe("input_required");
+  expect(service.read(access).brief).toBe("Synthetic deletion");
+  const result = await request("tools/call", {
+    name: "grill_forget",
+    arguments: { access },
+    inputResponses: { delete_session: { action: "accept", content: { confirm: true } } },
+  });
+  expect(result.error).toBeUndefined();
+  expect(() => service.read(access)).toThrow("access denied");
+});
 test("MCP input_required carries typed questions and accepts actual elicitation responses", async () => {
   const { service, request } = setup();
   const access = service.start("Synthetic notebook");

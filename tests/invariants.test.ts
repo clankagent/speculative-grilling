@@ -53,6 +53,44 @@ test("late worker completion cannot undo an explicit pause", () => {
   expect(s.read(a).state).toBe("paused");
   expect(s.read(a).work.late?.status).not.toBe("completed");
 });
+
+test("explicitly scoped work survives an unrelated human answer", () => {
+  const { s, a } = setup();
+  s.execute(a, {
+    type: "propose",
+    decision: {
+      id: "unrelated",
+      prompt: "Unrelated choice?",
+      authority: "user_required",
+      options: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+    },
+  });
+  s.execute(
+    a,
+    {
+      type: "startWork",
+      workId: "scoped",
+      hypothesisId: "root",
+      reserveTokens: 100,
+      dependencyIds: ["mode"],
+    },
+    "system",
+  );
+  s.execute(
+    a,
+    { type: "answer", decisionId: "unrelated", revision: 1, optionId: "a", commit: true },
+    "human",
+  );
+  s.execute(
+    a,
+    { type: "completeWork", workId: "scoped", summary: "Still applicable", decisions: [] },
+    "system",
+  );
+  expect(s.read(a).work.scoped?.status).toBe("completed");
+});
 test("branch-local proposals carry scope and cannot collide across worlds", () => {
   const { s, a } = setup();
   s.execute(a, { type: "fork", hypothesisId: "root", decisionId: "mode" });

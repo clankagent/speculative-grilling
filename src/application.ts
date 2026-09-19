@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { commandSchema, ensure, type Session } from "./domain.js";
+import { commandSchema, ensure, reviewedAnswerSchema, type Session } from "./domain.js";
 import { type GrillService, type SessionAccess } from "./storage.js";
 
 const agentCommands = new Set([
@@ -62,15 +62,73 @@ export function humanResponse(
   const response = humanResponseSchema.parse(input);
   const command =
     response.action === "answer"
-      ? { type: "answer", decisionId: questionId, revision, optionId: response.answer }
+      ? {
+          type: "answer",
+          decisionId: questionId,
+          revision,
+          optionId: response.answer,
+          commit: true,
+        }
       : response.action === "other"
-        ? { type: "answer", decisionId: questionId, revision, other: response.answer }
+        ? { type: "answer", decisionId: questionId, revision, other: response.answer, commit: true }
         : { type: response.action, decisionId: questionId, revision };
-  return service.execute(access, command, "human", commandId ? { commandId } : {});
+  service.execute(access, command, "human", commandId ? { commandId } : {});
+  return service.execute(access, { type: "schedule" }, "system");
 }
 export function safeError(error: unknown): string {
   // Only domain messages are authored locally. Provider/SDK errors may include request details.
   if (error instanceof Error && error.name === "DomainError") return error.message;
   if (error instanceof z.ZodError) return "Input failed schema validation";
   return "Operation failed; private diagnostic details were withheld";
+}
+
+export const answerReviewSchema = z
+  .object({
+    sourceText: z.string().min(1).max(20000),
+    answers: z.array(reviewedAnswerSchema).min(1).max(20),
+  })
+  .strict();
+export function answerReviewPreview(
+  service: GrillService,
+  access: SessionAccess,
+  input: unknown,
+): string {
+  const review = answerReviewSchema.parse(input);
+  const state = service.read(access);
+  return (
+    `Original answer:\n${review.sourceText}\n\nProposed interpretation (accepting commits these choices):\n` +
+    review.answers
+      .map((a) => {
+        const d = state.decisions[a.decisionId];
+        ensure(
+          d && d.revision === a.revision && !d.committed,
+          "STALE",
+          "Refresh the proposed answers before review",
+        );
+        ensure(
+          Boolean(a.optionId) !== Boolean(a.other),
+          "ANSWER",
+          "Provide one answer per decision",
+        );
+        const label = a.other ?? d.options.find((o) => o.id === a.optionId)?.label;
+        ensure(label, "OPTION", "Unknown proposed option");
+        return `${d.prompt}\n→ ${label}`;
+      })
+      .join("\n\n")
+  );
+}
+export function acceptAnswerReview(
+  service: GrillService,
+  access: SessionAccess,
+  input: unknown,
+  commandId?: string,
+) {
+  const review = answerReviewSchema.parse(input);
+  service.execute(
+    access,
+    { type: "answerBatch", ...review },
+    "human",
+    commandId ? { commandId } : {},
+  );
+  return service.execute(access, { type: "schedule" }, "system");
 }

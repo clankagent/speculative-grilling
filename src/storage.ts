@@ -44,7 +44,28 @@ export class GrillService {
       "CREATE TABLE IF NOT EXISTS adapter_state (key TEXT PRIMARY KEY, body TEXT NOT NULL)",
     );
     const version = this.db.prepare("SELECT value FROM metadata WHERE key='schemaVersion'").get();
-    ensure(version?.["value"] === "1", "SCHEMA_VERSION", "Database requires a supported migration");
+    ensure(
+      ["1", "2"].includes(String(version?.["value"])),
+      "SCHEMA_VERSION",
+      "Database requires a supported migration",
+    );
+    if (version?.["value"] === "1")
+      this.transaction(() => {
+        this.db.exec("ALTER TABLE adapter_state ADD COLUMN session_id TEXT");
+        for (const row of this.db.prepare("SELECT key,body FROM adapter_state").all()) {
+          const value = JSON.parse(row["body"] as string);
+          const sessionId = value?.access?.sessionId ?? value?.sessionId;
+          if (
+            typeof sessionId === "string" &&
+            this.db.prepare("SELECT 1 FROM sessions WHERE id=?").get(sessionId)
+          )
+            this.db
+              .prepare("UPDATE adapter_state SET session_id=? WHERE key=?")
+              .run(sessionId, row["key"] as string);
+        }
+        this.db.exec("UPDATE metadata SET value='2' WHERE key='schemaVersion'");
+      });
+    this.db.exec("PRAGMA secure_delete=ON");
   }
   close() {
     this.db.close();
@@ -54,11 +75,29 @@ export class GrillService {
     return row ? (JSON.parse(row["body"] as string) as T) : undefined;
   }
   putPrivate(key: string, value: unknown): void {
+    const record = value as { access?: SessionAccess; sessionId?: string } | null;
+    const sessionId = record?.access?.sessionId ?? record?.sessionId ?? null;
     this.db
       .prepare(
-        "INSERT INTO adapter_state VALUES (?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body",
+        "INSERT INTO adapter_state(key,body,session_id) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body,session_id=excluded.session_id",
       )
-      .run(hash(key), JSON.stringify(value));
+      .run(hash(key), JSON.stringify(value), sessionId);
+  }
+  deleteSession(access: SessionAccess): void {
+    this.transaction(() => {
+      const state = this.authenticate(access);
+      ensure(
+        !Object.values(state.work).some((w) => w.status === "running"),
+        "STATE",
+        "Pause running work before deleting a session",
+      );
+      this.db.prepare("DELETE FROM adapter_state WHERE session_id=?").run(access.sessionId);
+      this.db.prepare("DELETE FROM commands WHERE session_id=?").run(access.sessionId);
+      this.db.prepare("DELETE FROM events WHERE session_id=?").run(access.sessionId);
+      this.db.prepare("DELETE FROM sessions WHERE id=?").run(access.sessionId);
+    });
+    // Best-effort checkpoint; copies/backups and other readers have independent lifetimes.
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
   private transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");

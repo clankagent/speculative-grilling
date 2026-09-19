@@ -26,13 +26,19 @@ test("real Pi loader registers tools and human command answers the same durable 
     ui: {
       setWidget: vi.fn(),
       notify,
+      confirm: vi.fn(async () => true),
       select: vi.fn(async () => selections.shift()),
       editor: vi.fn(),
       setEditorText: vi.fn(),
     },
   } as unknown as ExtensionContext;
   try {
-    expect([...extension.tools.keys()]).toEqual(["grill_start", "grill_inspect", "grill_command"]);
+    expect([...extension.tools.keys()]).toEqual([
+      "grill_review_answers",
+      "grill_start",
+      "grill_inspect",
+      "grill_command",
+    ]);
     for (const handler of extension.handlers.get("session_start") ?? [])
       await handler({ type: "session_start", reason: "startup" }, ctx);
     const call = async (name: string, args: unknown) =>
@@ -69,6 +75,30 @@ test("real Pi loader registers tools and human command answers the same durable 
       command: JSON.stringify({ type: "delegate", decisionId: "links" }),
     });
     expect(blocked.details).toEqual({ error: true });
+    await call("grill_command", {
+      commandId: "new-review",
+      command: JSON.stringify({
+        type: "propose",
+        decision: {
+          id: "expiry",
+          prompt: "Expiry?",
+          authority: "user_required",
+          options: [
+            { id: "yes", label: "Yes" },
+            { id: "no", label: "No" },
+          ],
+        },
+      }),
+    });
+    const reviewed = await call("grill_review_answers", {
+      sourceText: "No expiry",
+      answers: [{ decisionId: "expiry", revision: 1, optionId: "no" }],
+    });
+    expect(reviewed.details).toEqual({ accepted: true });
+    expect(ctx.ui.confirm).toHaveBeenCalledWith(
+      "Review interpreted answers",
+      expect.stringContaining("No expiry"),
+    );
   } finally {
     for (const handler of extension.handlers.get("session_shutdown") ?? [])
       await handler({ type: "session_shutdown" }, ctx);

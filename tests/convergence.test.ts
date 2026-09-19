@@ -116,3 +116,52 @@ test("different observable effects keep the question open", () => {
   run({ type: "schedule" });
   expect(service.questions(access)).toHaveLength(1);
 });
+
+test("semantic convergence requires a judgment tied to every current reasoning result", () => {
+  const { service, access, run, worlds } = fixture();
+  run({ type: "startWork", workId: "paraphrase", hypothesisId: worlds[0]!.id, reserveTokens: 100 });
+  run({
+    type: "completeWork",
+    workId: "paraphrase",
+    summary: "Equivalent ordering",
+    decisions: [],
+    observableEffects: ["Both entries are visible in alphabetical title order"],
+    exhausted: true,
+    provider: "fixture",
+  });
+  const assessment = {
+    ...service.read(access).assessments.mode!,
+    equivalence: 0.999,
+    workIds: ["w0", "w1"],
+  };
+  run({ type: "assess", assessment });
+  run({ type: "converge" });
+  expect(service.read(access).decisions.mode?.question).not.toBe("withdrawn");
+  run({ type: "assess", assessment: { ...assessment, workIds: ["paraphrase", "w1"] } });
+  run({ type: "converge" });
+  expect(service.read(access).decisions.mode?.question).toBe("withdrawn");
+  expect(service.read(access).decisions.mode?.selection).toBeNull();
+});
+
+test("a newly discovered dependent obligation reopens a converged question", () => {
+  const { service, access, run } = fixture();
+  run({ type: "converge" });
+  run({
+    type: "propose",
+    decision: {
+      id: "new-obligation",
+      prompt: "New consequence?",
+      authority: "user_required",
+      dependencies: ["mode"],
+      options: [
+        { id: "yes", label: "Yes" },
+        { id: "no", label: "No" },
+      ],
+    },
+  });
+  run({ type: "schedule" });
+  expect(service.questions(access).map((q) => q.id)).toEqual(["mode"]);
+  expect(
+    Object.values(service.read(access).hypotheses).filter((h) => h.status === "active"),
+  ).toHaveLength(2);
+});

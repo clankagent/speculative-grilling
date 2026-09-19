@@ -16,6 +16,9 @@ import {
   humanResponseSchema,
   status,
   safeError,
+  answerReviewSchema,
+  answerReviewPreview,
+  acceptAnswerReview,
 } from "../application.js";
 import { type ExplorationRunner } from "../runner.js";
 import { sessionMetrics } from "../metrics.js";
@@ -75,6 +78,40 @@ export function createGrillMcpServer(
   const server = new McpServer(
     { name: "speculative-grilling", version: "0.1.0" },
     { capabilities: { extensions: { "io.modelcontextprotocol/tasks": {} } } },
+  );
+  server.registerTool(
+    "grill_review_answers",
+    {
+      description:
+        "Propose interpretations of a human's free-text answer across several decisions. The human must confirm the displayed choices; this tool never treats model interpretation as consent.",
+      inputSchema: answerReviewSchema.extend({ access: accessSchema }),
+    },
+    async ({ access, ...review }, ctx) => {
+      const key = `review_${createHash("sha256").update(JSON.stringify(review)).digest("hex").slice(0, 24)}`;
+      const response = acceptedContent(
+        ctx.mcpReq.inputResponses,
+        key,
+        z.object({ confirm: z.boolean() }),
+      );
+      if (response?.confirm)
+        return result(status(acceptAnswerReview(service, access, review, key)));
+      if (response || inputResponse(ctx.mcpReq.inputResponses, key).kind !== "missing")
+        return result({ accepted: false });
+      return inputRequired({
+        inputRequests: {
+          [key]: inputRequired.elicit({
+            message: answerReviewPreview(service, access, review),
+            requestedSchema: {
+              type: "object",
+              properties: {
+                confirm: { type: "boolean", title: "Commit these interpreted answers?" },
+              },
+              required: ["confirm"],
+            },
+          }),
+        },
+      });
+    },
   );
   server.registerTool(
     "grill_start",
@@ -139,6 +176,44 @@ export function createGrillMcpServer(
       inputSchema: z.object({ access: accessSchema }),
     },
     async ({ access }) => ({ content: [{ type: "text", text: service.export(access) }] }),
+  );
+  server.registerTool(
+    "grill_forget",
+    {
+      description:
+        "Ask the human to confirm deleting this local session, its history, and saved adapter access. Exports and backups are separate.",
+      inputSchema: z.object({ access: accessSchema }),
+    },
+    async ({ access }, ctx) => {
+      service.read(access);
+      const key = "delete_session";
+      const response = acceptedContent(
+        ctx.mcpReq.inputResponses,
+        key,
+        z.object({ confirm: z.boolean() }),
+      );
+      if (response?.confirm) {
+        if (runner) await runner.stop(access);
+        else service.execute(access, { type: "pause" }, "system");
+        service.deleteSession(access);
+        return result({ deleted: true });
+      }
+      if (response || inputResponse(ctx.mcpReq.inputResponses, key).kind !== "missing")
+        return result({ deleted: false });
+      return inputRequired({
+        inputRequests: {
+          [key]: inputRequired.elicit({
+            message:
+              "Delete this clarification session and all its local history? Exported files and backups will remain.",
+            requestedSchema: {
+              type: "object",
+              properties: { confirm: { type: "boolean", title: "Delete this session?" } },
+              required: ["confirm"],
+            },
+          }),
+        },
+      });
+    },
   );
   server.registerTool(
     "grill_questions",

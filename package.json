@@ -4,7 +4,20 @@
   "private": true,
   "description": "A shared speculative clarification engine for Pi and MCP",
   "license": "MIT",
+  "bin": {
+    "grill": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
   "type": "module",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./mcp": "./dist/src/adapters/mcp.js"
+  },
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vp test run",
@@ -36,7 +49,7 @@
   "packageManager": "pnpm@10.33.0",
   "pi": {
     "extensions": [
-      "./src/adapters/pi.ts"
+      "./dist/src/adapters/pi.js"
     ]
   }
 }
