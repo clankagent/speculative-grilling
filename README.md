@@ -32,10 +32,14 @@ The compact queue keeps every decision accessible, with one selected comparison 
 Configure the reasoning provider and optionally Jev in the server environment using the [running guide](docs/running.md#providers). Then:
 
 ```sh
-pnpm exec vp run web --live --brief "Design a small offline reading list"
+pnpm exec vp run web --live
 ```
 
-Open the printed private link and click **Explore**. This makes provider calls. Subsequent answers and steering can continue exploration within the session budget until paused. Credentials stay in the server process. The selected brief, context, relevant decisions and evidence are sent to your configured providers; no repository files or ambient chat history are automatically collected.
+Open the printed private link, enter your own brief, and click **Start exploration**. The page shows the configured model and whether Jev is enabled before you start. Opening the page makes no provider calls; starting exploration does. Each new session is bounded to 20 calls and 60,000 reserved tokens (a compute limit, not a dollar cap).
+
+Describe a real project with its audience, constraints and open choices, rather than an isolated yes/no question. Questions arrive in the queue while exploration continues. Compare alternatives, answer in your own words, add constraints, change earlier answers, inspect dependencies, and export the committed specification as Markdown. **Pause** stops work; **Explore** continues within the remaining budget. This produces a decision specification, not an implemented application.
+
+**New session** accepts a different brief and stops exploration of the previous session. Subsequent answers and steering can continue exploration within the session budget until paused. Credentials stay in the server process. The selected brief, context, relevant decisions and evidence are sent to your configured providers; no repository files or ambient chat history are automatically collected.
 
 Real sessions persist in SQLite outside the checkout. Use `--live --resume` to reopen the most recent browser session after a restart. Restarting does not silently restart paid work.
 

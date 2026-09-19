@@ -15,6 +15,7 @@ import type { GrillService, SessionAccess } from "../storage.js";
 import type { ExplorationRunner } from "../runner.js";
 
 const actionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("start"), brief: z.string().trim().min(10).max(20000) }),
   z.object({
     type: z.literal("answer"),
     id: z.string(),
@@ -40,17 +41,26 @@ const equals = (a: string, b: string) =>
 /** One session, one loopback origin. The browser receives projections, never provider credentials. */
 export async function startWorkspace(
   service: GrillService,
-  access: SessionAccess,
-  options: { runner?: ExplorationRunner; demo?: boolean; port?: number } = {},
+  access: SessionAccess | undefined,
+  options: {
+    runner?: ExplorationRunner;
+    demo?: boolean;
+    port?: number;
+    allowNew?: boolean;
+    providerLabel?: string;
+    onSession?: (access: SessionAccess) => void;
+  } = {},
 ) {
-  service.read(access);
+  if (access) service.read(access);
   const token = randomBytes(32).toString("hex");
   const cookieName = `grill_${randomBytes(8).toString("hex")}`;
   let origin = "";
   let workerError = "";
   let explorationEnabled = false;
+  let starting = false;
   const reviews = new Map<string, z.infer<typeof answerReviewSchema>>();
   const continueWork = () => {
+    if (!access) return;
     if (!explorationEnabled || !options.runner || service.read(access).state === "paused") return;
     workerError = "";
     void options.runner.start(access).catch(() => {
@@ -58,8 +68,15 @@ export async function startWorkspace(
     });
   };
   const snapshot = () => {
+    const setup = {
+      allowNew: !!options.allowNew,
+      providerLabel: options.providerLabel ?? "Configured providers",
+      canExplore: !!options.runner,
+    };
+    if (!access) return { ...setup, state: null };
     const state = service.read(access);
     return {
+      ...setup,
       state,
       questions: service.questions(access),
       reviews: [...reviews].map(([id, review]) => ({ id, ...review })),
@@ -159,7 +176,37 @@ export async function startWorkspace(
         return;
       }
       if (path === "/api/action" && req.method === "POST") {
-        const action = actionSchema.parse(await body(req));
+        const input = await body(req);
+        const action = actionSchema.parse(input);
+        if (action.type === "start") {
+          ensure(
+            options.allowNew && options.runner,
+            "PROVIDER",
+            "Starting sessions is unavailable here",
+          );
+          ensure(!starting, "BUSY", "A session is already starting");
+          starting = true;
+          try {
+            explorationEnabled = false;
+            if (access) await options.runner.stop(access);
+            access = service.start(action.brief);
+            options.onSession?.(access);
+            reviews.clear();
+            explorationEnabled = true;
+            continueWork();
+            res.end(JSON.stringify(snapshot()));
+          } finally {
+            starting = false;
+          }
+          return;
+        }
+        ensure(access, "SESSION", "Start a session first");
+        if (options.allowNew)
+          ensure(
+            !starting && input.sessionId === access.sessionId,
+            "STALE",
+            "This session changed. Reload before answering.",
+          );
         if (action.type === "review") {
           const review = reviews.get(action.id);
           ensure(review, "REVIEW", "This review is no longer pending");
@@ -216,6 +263,7 @@ export async function startWorkspace(
     url: `${origin}/#${token}`,
     origin,
     queueReview: (input: unknown) => {
+      ensure(access, "SESSION", "Start a session first");
       const review = answerReviewSchema.parse(input);
       answerReviewPreview(service, access, review);
       const id = randomBytes(12).toString("hex");

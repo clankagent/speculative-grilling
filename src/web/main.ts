@@ -12,21 +12,24 @@ const providers = demo
 const briefIndex = process.argv.indexOf("--brief");
 const brief = briefIndex >= 0 ? process.argv[briefIndex + 1] : undefined;
 const resume = !demo && process.argv.includes("--resume");
-if (!demo && !brief && !resume)
-  throw new Error("Live sessions require --brief followed by your design brief, or --resume");
 const access = demo
   ? startExample(service)
   : resume
     ? service.getPrivate<SessionAccess>("browser:latest")
-    : service.start(brief!);
-if (!access) throw new Error("No browser session saved. Start with --live --brief first.");
-if (resume) service.recover(access);
-if (!demo) service.putPrivate("browser:latest", access);
+    : brief
+      ? service.start(brief)
+      : undefined;
+if (resume && !access) throw new Error("No browser session saved. Start with --live first.");
+if (resume && access) service.recover(access);
+if (!demo && access) service.putPrivate("browser:latest", access);
 const runner = providers.reasoning
   ? new ExplorationRunner(service, providers.reasoning, providers.judgment)
   : undefined;
 const workspace = await startWorkspace(service, access, {
   demo,
+  allowNew: !demo,
+  providerLabel: `${process.env["GRILL_REASONING_PROVIDER"] ?? "Reasoning"} / ${process.env["GRILL_REASONING_MODEL"] ?? "configured model"}${providers.judgment ? " + Jev" : ""}`,
+  onSession: (created) => service.putPrivate("browser:latest", created),
   ...(runner ? { runner } : {}),
   port: Number(process.env["GRILL_WEB_PORT"] ?? 0),
 });

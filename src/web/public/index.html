@@ -14,12 +14,45 @@
       ><button id="brief-open" class="project" aria-label="Read brief">Design session</button
       ><button id="mode" class="mode" aria-label="About this example"></button>
       <div class="app-actions">
+        <button id="new-session" hidden>New session</button>
         <button id="activity-open">Activity <span id="activity-count"></span></button
         ><button id="explore" class="run">Explore</button>
       </div>
     </header>
     <div id="error" role="alert" hidden></div>
     <div id="feedback" role="status"></div>
+    <main id="setup" hidden>
+      <p class="eyebrow">New session</p>
+      <h1>What are you working on?</h1>
+      <p>
+        Describe the product, who it is for, and what is still undecided. Include requirements you
+        already know.
+      </p>
+      <form id="start-form">
+        <label for="new-brief">Your brief</label>
+        <textarea
+          id="new-brief"
+          rows="9"
+          minlength="10"
+          maxlength="20000"
+          required
+          placeholder="I’m building…"
+        ></textarea>
+        <p id="setup-provider" class="muted"></p>
+        <p class="muted">
+          Up to 20 provider calls and 60,000 reserved tokens per session. Provider charges apply.
+          Your brief, answers and relevant evidence go to these providers; sessions are saved on
+          this computer.
+        </p>
+        <button id="start-session" class="primary">Start exploration ↗</button>
+        <button id="cancel-new" type="button" hidden>Back to current session</button>
+      </form>
+      <div class="setup-process">
+        <span><strong>01</strong> Explore alternatives</span
+        ><span><strong>02</strong> Decide as questions arrive</span
+        ><span><strong>03</strong> Export your specification</span>
+      </div>
+    </main>
     <div class="layout">
       <aside class="queue">
         <div class="queue-title">

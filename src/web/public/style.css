@@ -814,3 +814,51 @@ h3,
 .queue-row {
   overflow-wrap: anywhere;
 }
+[hidden] {
+  display: none !important;
+}
+#setup {
+  max-width: 830px;
+  margin: 7vh auto;
+  padding: 0 28px 36px;
+}
+#setup h1 {
+  font-size: clamp(30px, 5vw, 46px);
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  margin: 16px 0 22px;
+}
+#setup > p {
+  max-width: 620px;
+}
+#start-form {
+  margin-top: 32px;
+}
+#start-form label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+#start-form textarea {
+  width: 100%;
+  background: #fffefa;
+  padding: 16px;
+  resize: vertical;
+}
+#start-form .muted {
+  font-size: 13px;
+}
+.setup-process {
+  display: flex;
+  gap: 28px;
+  border-top: 1px solid var(--line);
+  margin-top: 42px;
+  padding-top: 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.setup-process strong {
+  display: block;
+  font-weight: normal;
+  margin-bottom: 6px;
+}

@@ -13,6 +13,7 @@ let current,
   busy = false,
   zoom = 1,
   feedbackTimer;
+let composing = false;
 const drafts = new Map();
 const label = (s, id, option) =>
   s.decisions[id]?.options.find((o) => o.id === option)?.label ?? option;
@@ -45,7 +46,7 @@ async function act(value) {
   busy = true;
   error("");
   try {
-    const data = await request("/api/action", value);
+    const data = await request("/api/action", { ...value, sessionId: current?.state?.id });
     if (value.id) drafts.delete(value.id);
     if (value.type === "answer") {
       selected = data.questions[0]?.id ?? value.id;
@@ -258,7 +259,26 @@ function specification(s) {
   return `<h2 class="question-title">Specification</h2>${ds.length ? ds.map((d) => `<div class="spec-row"><h3>${esc(d.prompt)}</h3><p>${esc(label(s, d.id, d.selection.optionId))}</p></div>`).join("") : '<p class="empty">No answers saved yet.</p>'}`;
 }
 function render(data) {
+  if (current?.state?.id !== data.state?.id) {
+    selected = undefined;
+    detailKey = queueKey = reviewKey = "";
+    drafts.clear();
+  }
   current = data;
+  const setup = !data.state || composing;
+  $("#setup").hidden = !setup;
+  $(".layout").hidden = setup;
+  $("#brief-open").hidden = setup;
+  $("#activity-open").hidden = setup;
+  $("#explore").hidden = setup;
+  $("#new-session").hidden = !data.allowNew || setup;
+  $("#mode").hidden = !data.demo || setup;
+  $("#cancel-new").hidden = !data.state;
+  $("#setup-provider").textContent = data.canExplore
+    ? data.providerLabel
+    : "No reasoning provider configured. Configure the server before starting.";
+  $("#start-session").disabled = !data.canExplore;
+  if (setup) return;
   const s = data.state,
     ds = Object.values(s.decisions);
   selected ??= data.questions[0]?.id ?? ds[0]?.id;
@@ -446,6 +466,25 @@ document.addEventListener("click", (e) => {
   }
 });
 $("#explore").onclick = () => void act({ type: current.running ? "pause" : "explore" });
+$("#new-session").onclick = () => {
+  composing = true;
+  render(current);
+  $("#new-brief").focus();
+};
+$("#cancel-new").onclick = () => {
+  composing = false;
+  render(current);
+};
+$("#start-form").onsubmit = async (e) => {
+  e.preventDefault();
+  if (busy) return;
+  $("#start-session").disabled = true;
+  if (await act({ type: "start", brief: $("#new-brief").value.trim() })) {
+    composing = false;
+    $("#new-brief").value = "";
+    render(current);
+  } else $("#start-session").disabled = !current.canExplore;
+};
 $("#activity-open").onclick = () => $("#activity-dialog").showModal();
 $("#brief-open").onclick = () => $("#brief-dialog").showModal();
 $("#steer-open").onclick = () => $("#steer-dialog").showModal();

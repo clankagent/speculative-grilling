@@ -180,3 +180,61 @@ test("live stream carries concurrent work and answers without blocking the UI", 
     service.close();
   }
 });
+
+test("live browser starts arbitrary briefs only on request and rejects answers from a replaced session", async () => {
+  const service = new GrillService(":memory:");
+  let calls = 0;
+  const runner = new ExplorationRunner(service, {
+    name: "synthetic",
+    reserveTokens: () => 100,
+    async expand() {
+      calls++;
+      return { summary: "Explored", decisions: [], exhausted: true };
+    },
+  });
+  let saved;
+  const ui = await startWorkspace(service, undefined, {
+    runner,
+    allowNew: true,
+    onSession: (access) => {
+      saved = access;
+    },
+  });
+  const connect = await fetch(`${ui.origin}/api/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: new URL(ui.url).hash.slice(1) }),
+  });
+  const cookie = connect.headers.get("set-cookie")!.split(";")[0]!;
+  const post = (value: unknown) =>
+    fetch(`${ui.origin}/api/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify(value),
+    });
+  try {
+    expect(
+      (await (await fetch(`${ui.origin}/api/state`, { headers: { cookie } })).json()).state,
+    ).toBeNull();
+    expect(calls).toBe(0);
+    expect((await post({ type: "start", brief: "short" })).status).toBe(400);
+    const first = await (
+      await post({ type: "start", brief: "Design a synthetic reading application" })
+    ).json();
+    expect(first.state.brief).toBe("Design a synthetic reading application");
+    expect(saved).toBeDefined();
+    const second = await (
+      await post({ type: "start", brief: "Design a synthetic hiking notebook" })
+    ).json();
+    expect(second.state.id).not.toBe(first.state.id);
+    expect(
+      (await post({ type: "steer", text: "Obsolete tab", sessionId: first.state.id })).status,
+    ).toBe(400);
+    expect((await post({ type: "pause", sessionId: second.state.id })).status).toBe(200);
+    expect(calls).toBeGreaterThan(0);
+  } finally {
+    await ui.close();
+    await runner.close();
+    service.close();
+  }
+});
