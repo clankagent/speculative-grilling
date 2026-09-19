@@ -81,6 +81,8 @@ test("standalone stdio process speaks MCP and closes cleanly without provider cr
     };
     const started = await call(2, "grill_start", { brief: "Synthetic notebook" });
     const workspace = await call(3, "grill_workspace", { access: started });
+    const questions = await call(4, "grill_questions", { access: started });
+    expect(questions.workspaceUrl).toBe(workspace.workspaceUrl);
     const url = new URL(workspace.workspaceUrl);
     const connected = await fetch(`${url.origin}/api/connect`, {
       method: "POST",

@@ -52,9 +52,9 @@ Available tools are grill_start, grill_workspace, grill_inspect, grill_command, 
 
 grill_command accepts validated domain commands but cannot answer on behalf of the human, delegate authority, inject worker results, or manufacture Jev assessments. Use a unique commandId for each logical mutation and reuse it only for retries of the same input.
 
-As a compatibility fallback, grill_questions uses MCP input_required elicitation. It can return several independent questions together, accepts free text as an explicit alternative, and treats refusal as deferral. The trusted MCP host is responsible for obtaining genuine human input.
+In stdio mode, grill_questions returns the workspace link by default. As an explicit compatibility fallback, presentation=host uses MCP input_required elicitation. It can return several independent questions together, accepts free text as an explicit alternative, and treats refusal as deferral. The trusted MCP host is responsible for obtaining genuine human input.
 
-grill_explore returns a durable Task when the request advertises the io.modelcontextprotocol/tasks extension. Clients poll tasks/get, supply input through tasks/update, and cancel through tasks/cancel. Other clients receive a normal bounded result. Task IDs are unguessable bearer capabilities for that task; keep them private. Tasks are not enumerable.
+grill_explore returns a durable Task when the request advertises the io.modelcontextprotocol/tasks extension. Clients poll tasks/get and cancel through tasks/cancel. With a browser workspace, the compute Task completes independently of pending browser questions. In programmatic handlers without a workspace, clients supply elicitation input through tasks/update. Other clients receive a normal bounded result. Task IDs are unguessable bearer capabilities for that task; keep them private. Tasks are not enumerable.
 
 The pinned SDK's core registry still rejects tasks/get and tasks/cancel for modern requests. The adapter therefore implements the official Tasks extension at a separate validated transport boundary, while the SDK handles core MCP. This is covered by wire-level tests and does not modify the dependency. The same layer is used for stdio and the programmatic local HTTP handler.
 

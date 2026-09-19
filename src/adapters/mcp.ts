@@ -136,7 +136,7 @@ export function createGrillMcpServer(
     "grill_start",
     {
       description:
-        "Create a durable clarification session. Keep its returned access credentials private.",
+        "Create a durable clarification session. Keep its returned access credentials private. When available, call grill_workspace next and present its browser link to the human.",
       inputSchema: z.object({
         brief: z.string().min(1).max(50000),
         budget: budgetSchema.optional(),
@@ -238,10 +238,24 @@ export function createGrillMcpServer(
     "grill_questions",
     {
       description:
-        "Ask the human the current independent question frontier through MCP elicitation. Missing or declined responses never count as agreement.",
-      inputSchema: z.object({ access: accessSchema }),
+        "Present the question frontier in the browser workspace when available. Set presentation=host only for the explicit native-elicitation compatibility fallback. Missing or declined responses never count as agreement.",
+      inputSchema: z.object({
+        access: accessSchema,
+        presentation: z.enum(["workspace", "host"]).default(workspace ? "workspace" : "host"),
+      }),
     },
-    async ({ access }, ctx) => {
+    async ({ access, presentation }, ctx) => {
+      if (presentation === "workspace") {
+        ensure(
+          workspace,
+          "WORKSPACE",
+          "This handler has no browser workspace; request the host fallback explicitly",
+        );
+        return result({
+          questions: service.questions(access),
+          workspaceUrl: (await workspace(access)).url,
+        });
+      }
       const { inputs, pending } = questionInputs(service, access);
       let supplied = false;
       for (const [key, q] of Object.entries(pending)) {
@@ -323,7 +337,9 @@ export function createGrillMcpServer(
   const finish = (taskId: string) => {
     const task = readTask(taskId);
     if (task.status === "cancelled") return;
-    task.status = service.questions(task.access).length ? "input_required" : "completed";
+    // Browser input is independent of the completed compute task; do not reopen host dialogs.
+    task.status =
+      !workspace && service.questions(task.access).length ? "input_required" : "completed";
     if (task.status === "input_required")
       task.pending = questionInputs(service, task.access).pending;
     if (task.status === "completed") task.result = result(status(service.read(task.access)));
