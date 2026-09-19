@@ -1,31 +1,32 @@
-/* No framework state owns decisions: every accepted action goes through the shared service. */
-const $ = (selector) => document.querySelector(selector);
-const escape = (value) =>
-  String(value ?? "").replace(
+const $ = (s) => document.querySelector(s);
+const esc = (v) =>
+  String(v ?? "").replace(
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
 let current,
-  view = "questions",
-  renderedKey = "",
-  busy = false;
+  selected,
+  view = "decision",
+  detailKey = "",
+  queueKey = "",
+  reviewKey = "",
+  busy = false,
+  zoom = 1,
+  feedbackTimer;
 const drafts = new Map();
-const views = {
-  questions: ["Needs you", "Answer in any order. Independent work can continue while you decide."],
-  deferred: ["Deferred", "Set aside for now. No answer has been assumed."],
-  resolved: ["Decisions", "Recorded choices and questions that no longer need your attention."],
-  graph: [
-    "Decision graph",
-    "Dependencies and branch conditions. Speculation stays separate from committed choices.",
-  ],
-  spec: ["Specification", "Only committed decisions appear in this export."],
-};
+const label = (s, id, option) =>
+  s.decisions[id]?.options.find((o) => o.id === option)?.label ?? option;
+function notify(message) {
+  clearTimeout(feedbackTimer);
+  $("#feedback").textContent = message;
+  feedbackTimer = setTimeout(() => ($("#feedback").textContent = ""), 3500);
+}
 function error(message) {
   $("#error").hidden = !message;
   $("#error").textContent = message;
 }
 async function request(path, value) {
-  const response = await fetch(
+  const r = await fetch(
     path,
     value === undefined
       ? {}
@@ -35,9 +36,9 @@ async function request(path, value) {
           body: JSON.stringify(value),
         },
   );
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Request failed");
-  return result;
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Request failed");
+  return data;
 }
 async function act(value) {
   if (busy) return;
@@ -46,25 +47,30 @@ async function act(value) {
   try {
     const data = await request("/api/action", value);
     if (value.id) drafts.delete(value.id);
+    if (value.type === "answer") {
+      selected = data.questions[0]?.id ?? value.id;
+      notify(
+        value.response.action === "defer"
+          ? "Moved to Later"
+          : value.response.action === "delegate"
+            ? "Delegated"
+            : "Answer saved",
+      );
+    } else if (value.type === "reopen") {
+      selected = value.id;
+      notify("Reopened");
+    }
     render(data);
+    return true;
   } catch (e) {
     error(e.message);
     try {
       render(await request("/api/state"));
     } catch {}
+    return false;
   } finally {
     busy = false;
   }
-}
-function label(s, id, option) {
-  return s.decisions[id]?.options.find((o) => o.id === option)?.label ?? option;
-}
-function branchLabel(s, h) {
-  return (
-    Object.entries(h.assignments)
-      .map(([id, option]) => label(s, id, option))
-      .join(" · ") || "Common ground"
-  );
 }
 function effects(s, id, option) {
   return Object.values(s.work)
@@ -79,269 +85,387 @@ function effects(s, id, option) {
     .flatMap((w) => w.observableEffects.map((text) => ({ text, workId: w.id })))
     .filter((v, i, a) => a.findIndex((x) => x.text === v.text) === i);
 }
-function question(d, q, s, index) {
-  const draft = drafts.get(d.id) ?? { option: "", other: "" };
-  const dependent = Object.values(s.decisions).filter((x) => x.dependencies.includes(d.id));
-  return `<article class="question" data-id="${escape(d.id)}"><div class="question-head"><span>QUESTION ${String(index + 1).padStart(2, "0")} · ${d.authority === "approval_required" ? "Approval required" : d.authority === "user_required" ? "Your decision" : "Your preference"}</span><strong>${dependent.length ? `${dependent.length} dependent decision${dependent.length > 1 ? "s" : ""}` : "Independent choice"}</strong></div><h3>${escape(d.prompt)}</h3><p class="why">${escape(q.whyNow || d.reason)}</p><form data-question="${escape(d.id)}"><fieldset class="options"><legend class="sr-only">${escape(d.prompt)}</legend>${d.options
-    .map((o) => {
-      const consequences = effects(s, d.id, o.id);
-      const otherFindings = new Set(
-        d.options
-          .filter((x) => x.id !== o.id)
-          .flatMap((x) => effects(s, d.id, x.id).map((e) => e.text)),
-      );
-      const distinctive = consequences.filter((e) => !otherFindings.has(e.text));
-      return `<label class="option"><input type="radio" name="choice" value="${escape(o.id)}" ${draft.option === o.id ? "checked" : ""}><span><strong>${escape(o.label)}</strong><span class="consequence">${escape(distinctive.length ? "Branch finding: " + distinctive[0].text : consequences.length ? "Recorded findings overlap with other options. Inspect the evidence below." : "Consequences have not been recorded for this option yet.")}</span></span></label>`;
-    })
-    .join(
-      "",
-    )}</fieldset><label class="other-label">Or give your own answer<textarea name="other" rows="2" placeholder="Describe what you want instead…" maxlength="20000">${escape(draft.other)}</textarea></label><div class="actions"><button class="primary" type="submit">Use this answer</button><button class="quiet" type="button" data-action="defer">Decide later</button>${q.mayDelegate ? '<button class="quiet" type="button" data-action="delegate">Let the agent decide</button>' : ""}</div></form><details><summary>Why this question · evidence and consequences</summary><div class="evidence"><p>${escape(d.reason)}</p><p>${dependent.length ? `Unlocks: ${dependent.map((x) => escape(x.prompt)).join("; ")}` : "No dependent decisions recorded yet."}</p>${d.options
-    .map(
-      (o) =>
-        `<p><strong>${escape(o.label)}</strong></p>${
-          effects(s, d.id, o.id)
-            .map(
-              (e) =>
-                `<p>${escape(e.text)} <small>Source: branch work ${escape(e.workId.slice(0, 8))}</small></p>`,
-            )
-            .join("") || "<p>No completed branch analysis recorded.</p>"
-        }`,
-    )
-    .join("")}${Object.values(s.evidence)
+function uniqueEffects(s, d, option) {
+  const other = new Set(
+    d.options
+      .filter((o) => o.id !== option)
+      .flatMap((o) => effects(s, d.id, o.id).map((e) => e.text)),
+  );
+  return effects(s, d.id, option).filter((e) => !other.has(e.text));
+}
+function stateLabel(d) {
+  return d.committed
+    ? "Decided"
+    : d.question === "deferred"
+      ? "Later"
+      : d.delegated
+        ? "Delegated"
+        : d.question === "withdrawn"
+          ? "Not needed"
+          : current.questions.some((q) => q.id === d.id)
+            ? "To decide"
+            : "Waiting";
+}
+function rows(s) {
+  const ds = Object.values(s.decisions),
+    queued = current.questions.map((q) => s.decisions[q.id]);
+  const groups = [
+    ["To decide", queued],
+    ["Waiting", ds.filter((d) => stateLabel(d) === "Waiting")],
+    ["Later", ds.filter((d) => d.question === "deferred")],
+    ["Decided", ds.filter((d) => d.committed)],
+    ["Delegated", ds.filter((d) => d.delegated && !d.committed)],
+    ["Not needed", ds.filter((d) => d.question === "withdrawn" && !d.committed)],
+  ];
+  return (
+    groups
+      .filter(([, list]) => list.length)
+      .map(
+        ([name, list]) =>
+          `<div class="group-title">${name}<span>${list.length}</span></div>${list.map((d) => `<button class="queue-row" data-select="${esc(d.id)}" aria-current="${d.id === selected}" aria-label="${esc(d.prompt)} — ${name}"><span class="ordinal ${d.committed ? "done" : ""}">${d.committed ? "✓" : String(ds.indexOf(d) + 1).padStart(2, "0")}</span><span>${esc(d.prompt)}${d.selection ? `<small>${esc(label(s, d.id, d.selection.optionId))}</small>` : d.dependencies.length ? "<small>Depends on another decision</small>" : ""}</span></button>`).join("")}`,
+      )
+      .join("") || '<p class="group-title">No decisions yet</p>'
+  );
+}
+function sources(s, d) {
+  const findings = d.options.flatMap((o) =>
+    effects(s, d.id, o.id).map(
+      (e) =>
+        `<li><strong>${esc(o.label)}</strong><br>${esc(e.text)} <code>· ${esc(e.workId.slice(0, 8))}</code></li>`,
+    ),
+  );
+  const evidence = Object.values(s.evidence)
     .filter((e) => e.valid && d.id in e.supports)
-    .map((e) => `<p>${escape(e.summary)} — ${escape(e.source)}</p>`)
-    .join(
-      "",
-    )}<p>No recommendation has been recorded. An explored option is not an approved choice.</p></div></details></article>`;
+    .map((e) => `<li>${esc(e.summary)}<br>${esc(e.source)}</li>`);
+  return `<details class="sources" data-keep="sources"><summary>Evidence & reasoning</summary><p>${esc(d.reason)}</p>${findings.length || evidence.length ? `<ul>${[...findings, ...evidence].join("")}</ul>` : "<p>No evidence recorded.</p>"}</details>`;
+}
+function decision(s) {
+  const d = s.decisions[selected];
+  if (!d)
+    return `<p class="empty">${current.running ? "Exploring your brief…" : "No decisions to review."}</p>`;
+  const q = current.questions.find((q) => q.id === d.id),
+    draft = drafts.get(d.id) || "";
+  const ds = Object.values(s.decisions),
+    next = ds.filter((x) => x.dependencies.includes(d.id));
+  let body = "";
+  if (d.committed)
+    body = `<p class="committed">${esc(label(s, d.id, d.selection.optionId))}</p><button class="choose" data-reopen="${esc(d.id)}">Change answer</button>`;
+  else if (d.question === "deferred")
+    body = `<p class="waiting">Set aside for later.</p><button class="choose" data-reopen="${esc(d.id)}">Return to queue</button>`;
+  else if (q)
+    body = `<div class="comparison">${d.options
+      .map((o, i) => {
+        const findings = uniqueEffects(s, d, o.id);
+        return `<section class="alternative"><p class="option-letter">${String.fromCharCode(65 + i)}</p><h3>${esc(o.label)}</h3><p class="finding ${findings.length ? "" : "missing"}">${esc(findings[0]?.text ?? (current.running ? "Comparing this option…" : "Not explored yet."))}</p><button class="choose" data-option="${esc(o.id)}" aria-label="Choose ${esc(o.label)}">Choose ${String.fromCharCode(65 + i)} <span aria-hidden="true">↗</span></button></section>`;
+      })
+      .join(
+        "",
+      )}</div><div class="question-footer"><details class="other" data-keep="other" ${draft ? "open" : ""}><summary>Write another answer</summary><form id="other-form"><label for="other-text" class="sr-only">Your answer</label><textarea id="other-text" name="other" rows="3" maxlength="20000" placeholder="Your answer" required>${esc(draft)}</textarea><button class="primary">Save answer</button></form></details><button data-action="defer">Later</button>${q.mayDelegate ? '<button data-action="delegate">Delegate</button>' : ""}</div>`;
+  else if (d.delegated)
+    body = '<p class="waiting">Delegated. The agent has not selected an option yet.</p>';
+  else if (d.question === "withdrawn")
+    body = `<p class="waiting">${esc(d.reason)}</p><button class="choose" data-reopen="${esc(d.id)}">Reopen</button>`;
+  else
+    body = `<div class="waiting">${d.dependencies.map((id) => `<p>First: <button data-select="${esc(id)}">${esc(s.decisions[id]?.prompt ?? id)}</button></p>`).join("") || "<p>This decision is not ready for an answer.</p>"}${Object.entries(
+      d.when,
+    )
+      .map(([id, o]) => `<p>Only if you choose “${esc(label(s, id, o))}”.</p>`)
+      .join("")}</div>`;
+  return `<div data-id="${esc(d.id)}"><div class="decision-top"><span class="eyebrow">${String(ds.indexOf(d) + 1).padStart(2, "0")} / ${String(ds.length).padStart(2, "0")} · ${stateLabel(d)}</span><div class="decision-actions"><button id="previous" aria-label="Previous decision">←</button><button id="next" aria-label="Next decision">→</button></div></div><h2 class="question-title">${esc(d.prompt)}</h2>${next.length ? `<p class="impact">Affects: ${next.map((x) => esc(x.prompt)).join(" ")}</p>` : ""}${body}${sources(s, d)}</div>`;
+}
+function wrap(text, limit = 28) {
+  const lines = [];
+  let line = "";
+  const words = text.split(/\s+/).flatMap((word) => {
+    const chunks = [];
+    for (let i = 0; i < word.length; i += limit) chunks.push(word.slice(i, i + limit));
+    return chunks;
+  });
+  for (const word of words) {
+    if ((line + " " + word).length > limit && line) {
+      lines.push(line);
+      line = word;
+    } else line += (line ? " " : "") + word;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function graph(s) {
+  const ds = Object.values(s.decisions);
+  if (!ds.length) return '<p class="empty">No decisions yet.</p>';
+  const depths = new Map();
+  const depth = (d) => {
+    if (depths.has(d.id)) return depths.get(d.id);
+    depths.set(d.id, 0);
+    const n = d.dependencies.length
+      ? 1 + Math.max(...d.dependencies.map((id) => (s.decisions[id] ? depth(s.decisions[id]) : 0)))
+      : 0;
+    depths.set(d.id, n);
+    return n;
+  };
+  ds.forEach(depth);
+  const groups = new Map();
+  ds.forEach((d) => {
+    const n = depths.get(d.id);
+    if (!groups.has(n)) groups.set(n, []);
+    groups.get(n).push(d);
+  });
+  const positions = new Map();
+  for (const [level, list] of groups)
+    list.forEach((d, i) => positions.set(d.id, { x: 36 + level * 450, y: 40 + i * 180 }));
+  const width = 320 + Math.max(...depths.values()) * 450,
+    height = Math.max(440, Math.max(...[...groups.values()].map((l) => l.length)) * 180 + 50);
+  const edges = ds
+    .flatMap((d) =>
+      d.dependencies.map((id) => {
+        const p = positions.get(id),
+          c = positions.get(d.id);
+        if (!p) return "";
+        const x = p.x + 250,
+          y = p.y + 60,
+          cx = c.x,
+          cy = c.y + 60,
+          mid = (x + cx) / 2;
+        const condition = d.when[id] ? label(s, id, d.when[id]) : "requires";
+        const allLines = wrap(condition, 23),
+          lines = allLines.slice(0, 2);
+        return `<g><title>${esc(condition)}</title><path class="edge" marker-end="url(#arrow)" d="M${x},${y} C${mid},${y} ${mid},${cy} ${cx},${cy}"/>${lines.map((line, i) => `<text class="edge-label" x="${mid}" y="${(y + cy) / 2 - 12 + (i - lines.length + 1) * 14}" text-anchor="middle">${esc(line)}${i === 1 && allLines.length > 2 ? "…" : ""}</text>`).join("")}</g>`;
+      }),
+    )
+    .join("");
+  const nodes = ds
+    .map((d) => {
+      const p = positions.get(d.id),
+        lines = wrap(d.prompt, 30);
+      const status = d.committed
+        ? "committed"
+        : current.questions.some((q) => q.id === d.id)
+          ? "queued"
+          : "waiting";
+      return `<g class="node" role="button" tabindex="0" data-select="${esc(d.id)}" data-status="${status}" aria-label="${esc(d.prompt)} — ${stateLabel(d)}" transform="translate(${p.x},${p.y})"><title>${esc(d.prompt)}</title><rect width="250" height="120" rx="3"/><text class="node-status" x="16" y="23">${stateLabel(d)}</text><text x="16" y="48">${lines
+        .slice(0, 3)
+        .map(
+          (line, i) =>
+            `<tspan x="16" dy="${i ? 18 : 0}">${esc(line)}${i === 2 && lines.length > 3 ? "…" : ""}</tspan>`,
+        )
+        .join("")}</text></g>`;
+    })
+    .join("");
+  return `<div class="graph-toolbar"><h2>Decision graph</h2><button data-zoom="out" aria-label="Zoom out">−</button><button data-zoom="in" aria-label="Zoom in">+</button><button data-zoom="fit">Fit</button></div><div class="graph-scroll"><svg xmlns="http://www.w3.org/2000/svg" width="${width * zoom}" height="${height * zoom}" viewBox="0 0 ${width} ${height}" aria-label="Decision dependencies" role="group" data-width="${width}" data-height="${height}"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a19d8b"/></marker></defs>${edges}${nodes}</svg></div><div class="graph-legend"><span class="open">To decide</span><span class="answered">Decided</span><span>Waiting</span></div><p class="graph-help">Select a decision to inspect it. Arrows show dependencies.</p>`;
+}
+function specification(s) {
+  const ds = Object.values(s.decisions).filter((d) => d.committed);
+  return `<h2 class="question-title">Specification</h2>${ds.length ? ds.map((d) => `<div class="spec-row"><h3>${esc(d.prompt)}</h3><p>${esc(label(s, d.id, d.selection.optionId))}</p></div>`).join("") : '<p class="empty">No answers saved yet.</p>'}`;
 }
 function render(data) {
   current = data;
   const s = data.state,
-    decisions = Object.values(s.decisions),
-    deferred = decisions.filter((d) => d.question === "deferred"),
-    resolved = decisions.filter((d) => d.committed || d.question === "withdrawn");
-  $("#mode").textContent = data.demo ? "Interactive example" : "Private local session";
-  $("#notice").textContent = data.demo
-    ? "Synthetic example · no API calls. Your choices update the real decision graph; branch analysis is scripted."
-    : "Private session · exploration sends the brief, relevant decisions and evidence to configured providers. Keys stay on the server.";
+    ds = Object.values(s.decisions);
+  selected ??= data.questions[0]?.id ?? ds[0]?.id;
+  $("#mode").textContent = data.demo ? "Example" : "";
+  $("#mode").hidden = !data.demo;
   $("#brief-text").textContent = s.brief;
-  $("#question-count").textContent = data.questions.length;
-  $("#deferred-count").textContent = deferred.length;
-  $("#resolved-count").textContent = resolved.length;
-  $("#activity-state").textContent = data.running
-    ? "Working"
-    : s.state === "paused"
-      ? "Paused"
-      : s.state === "budget_exhausted"
-        ? "Budget reached"
-        : "Ready";
-  $("#worker-description").textContent =
-    data.workerError ||
-    (data.demo
-      ? "Explore both deletion policies before deciding. You can answer while the example worker runs."
-      : data.canExplore
-        ? "Explore plausible answers within this session’s budget. You can keep answering while work runs."
-        : "No background model configured. A connected agent can add decisions and analysis to this workspace.");
-  $("#explore").textContent = data.running
-    ? "Pause exploration"
-    : s.state === "paused"
-      ? "Resume exploration"
-      : "Explore alternatives";
+  $("#brief-open").textContent = data.demo ? "Shared notebook" : s.brief;
+  $("#brief-open").title = s.brief;
+  $("#context").innerHTML = s.context.map((c) => `<p>${esc(c)}</p>`).join("");
+  $("#provider-note").textContent = data.demo
+    ? "Synthetic example. No model calls."
+    : "Exploration sends this brief, relevant decisions and evidence to your configured providers.";
+  $("#total").textContent = `${ds.filter((d) => d.committed).length} / ${ds.length}`;
+  $("#explore").textContent = data.running ? "Pause" : s.state === "paused" ? "Resume" : "Explore";
   $("#explore").disabled = !data.canExplore;
-  $("#budget").textContent =
-    `${s.calls} / ${s.budget.maxCalls} ${data.demo ? "simulated " : ""}calls · ${s.tokensReserved.toLocaleString()} / ${s.budget.maxTokens.toLocaleString()} tokens reserved`;
-  $("#branches").innerHTML = Object.values(s.hypotheses)
-    .filter((h) => h.status !== "expanded")
-    .map(
-      (h) =>
-        `<div class="branch ${escape(h.status)}"><span class="status">${escape(h.status)}</span><p>${escape(branchLabel(s, h))}</p>${h.status === "pruned" || h.status === "suspended" ? `<p class="small">${escape(h.reason)}</p>` : ""}</div>`,
-    )
-    .join("");
-  $("#work").innerHTML =
+  $("#explore").title = data.canExplore
+    ? "Explore alternatives within the session budget"
+    : "No reasoning provider configured";
+  $("#activity-count").textContent = data.running ? "●" : Object.keys(s.work).length || "";
+  if (data.workerError) error(data.workerError);
+  $("#activity").innerHTML =
+    `<p class="muted">${s.calls} / ${s.budget.maxCalls} calls${data.demo ? " (simulated)" : ""} · ${s.tokensReserved.toLocaleString()} tokens reserved</p>` +
     Object.values(s.work)
       .reverse()
-      .slice(0, 6)
       .map(
         (w) =>
-          `<div class="work-item"><small>${escape(w.status)} · ${escape(w.kind)}</small><p>${escape(w.summary || (w.status === "running" ? "Comparing consequences…" : w.failureCode || "No result recorded"))}</p></div>`,
+          `<div class="activity-row"><span>${esc(w.status)}</span><p>${esc(w.summary || w.failureCode || "Exploring…")}</p></div>`,
       )
-      .join("") ||
-    '<p class="small">No analysis yet. Start exploration to compare the alternatives.</p>';
-  $("#context").innerHTML =
-    s.context.map((c) => `<p>${escape(c)}</p>`).join("") || "<p>No additional direction.</p>";
-  // Work events must not replace a form while someone is typing or navigating it.
+      .join("");
+  const qk = JSON.stringify([ds, data.questions, selected]);
+  if (qk !== queueKey) {
+    queueKey = qk;
+    $("#queue-list").innerHTML = rows(s);
+  }
+  const rk = JSON.stringify(data.reviews || []);
+  if (rk !== reviewKey) {
+    reviewKey = rk;
+    $("#reviews").innerHTML = (data.reviews || [])
+      .map(
+        (r) =>
+          `<section class="review"><h2>Check this interpretation</h2><p>${esc(r.sourceText)}</p>${r.answers.map((a) => `<p>${esc(s.decisions[a.decisionId]?.prompt)} → <strong>${esc(a.other || label(s, a.decisionId, a.optionId))}</strong></p>`).join("")}<button data-review="${esc(r.id)}" data-accept="true">Accept answers</button><button data-review="${esc(r.id)}" data-accept="false">Dismiss</button></section>`,
+      )
+      .join("");
+  }
   const key = JSON.stringify([
     view,
-    decisions,
+    selected,
+    ds,
     data.questions,
-    Object.values(s.work)
-      .filter((w) => w.status === "completed")
-      .map((w) => w.id),
+    Object.values(s.work).map((w) => [w.id, w.status]),
   ]);
-  $("#reviews").innerHTML = (data.reviews || [])
-    .map(
-      (r) =>
-        `<article class="question"><h3>Review your answer</h3><p>${escape(r.sourceText)}</p>${r.answers.map((a) => `<p>${escape(s.decisions[a.decisionId]?.prompt)} → <strong>${escape(a.other || label(s, a.decisionId, a.optionId))}</strong></p>`).join("")}<p class="small">Accepting commits every choice above. Check the interpretation first.</p><div class="actions"><button data-review="${escape(r.id)}" data-accept="true">Accept these interpretations</button><button data-review="${escape(r.id)}" data-accept="false">Dismiss proposal</button></div></article>`,
-    )
-    .join("");
-  if (key !== renderedKey) {
-    const focused = document.activeElement?.closest("[data-id]")?.dataset.id;
-    const field = document.activeElement?.getAttribute("name");
-    const focusedValue = document.activeElement?.value;
-    const selection = document.activeElement?.selectionStart;
-    const expanded = [...document.querySelectorAll(".question details[open]")].map(
-      (el) => el.closest("[data-id]").dataset.id,
-    );
-    renderedKey = key;
-    $("#view-title").textContent = views[view][0];
-    $("#view-description").textContent = views[view][1];
-    if (view === "questions")
-      $("#items").innerHTML =
-        data.questions.map((q, i) => question(s.decisions[q.id], q, s, i)).join("") ||
-        `<div class="empty"><h2>${data.running ? "Exploration is still running" : "Nothing needs your input right now"}</h2><p>${deferred.length ? `${deferred.length} decision(s) are deferred. You can return to them at any time.` : "An empty queue does not mean the design is complete. Inspect the graph or continue exploration."}</p></div>`;
-    else if (view === "deferred")
-      $("#items").innerHTML =
-        deferred
-          .map(
-            (d) =>
-              `<article class="record"><h3>${escape(d.prompt)}</h3><p>${escape(d.reason)}</p><button data-reopen="${escape(d.id)}">Bring back to queue</button></article>`,
-          )
-          .join("") || '<p class="empty">No questions set aside.</p>';
-    else if (view === "resolved")
-      $("#items").innerHTML =
-        resolved
-          .map(
-            (d) =>
-              `<article class="record"><span class="small">${d.committed ? "Committed" : "No answer assumed"}</span><h3>${escape(d.prompt)}</h3><p class="selected">${d.selection ? escape(label(s, d.id, d.selection.optionId)) : "Question no longer needed"}</p><p>${escape(d.reason)}</p><button data-reopen="${escape(d.id)}">Reopen decision</button></article>`,
-          )
-          .join("") ||
-        '<p class="empty">Your accepted answers will appear here. Hypotheses are not decisions.</p>';
-    else if (view === "graph")
-      $("#items").innerHTML =
-        decisions
-          .map(
-            (d) =>
-              `<article class="graph-node"><code>${escape(d.id)}</code> <span class="small">· ${d.committed ? "committed" : escape(d.question)}</span><h3>${escape(d.prompt)}</h3><div class="edge">${d.dependencies.length ? "↳ Depends on: " + d.dependencies.map((id) => escape(s.decisions[id]?.prompt ?? id)).join("; ") : "Independent decision"}</div>${Object.entries(
-                d.when,
-              )
-                .map(
-                  ([id, option]) =>
-                    `<div class="edge">Only when: ${escape(label(s, id, option))}</div>`,
-                )
-                .join(
-                  "",
-                )}${d.selection ? `<p>${escape(label(s, d.id, d.selection.optionId))}</p>` : ""}</article>`,
-          )
-          .join("") || '<p class="empty">No decisions recorded yet.</p>';
-    else $("#items").innerHTML = `<pre>${escape(data.specification)}</pre>`;
-    for (const id of expanded) {
-      const el = [...document.querySelectorAll("[data-id]")].find((e) => e.dataset.id === id);
-      if (el) el.querySelector("details").open = true;
+  if (key === detailKey) return;
+  detailKey = key;
+  const focused = document.activeElement?.id,
+    selectionStart = document.activeElement?.selectionStart,
+    selectionEnd = document.activeElement?.selectionEnd;
+  const open = [...document.querySelectorAll("details[open][data-keep]")].map(
+    (e) => e.dataset.keep,
+  );
+  const previousId = $("#detail [data-id]")?.dataset.id;
+  const scroll = $(".graph-scroll"),
+    scrollLeft = scroll?.scrollLeft,
+    scrollTop = scroll?.scrollTop;
+  $("#detail").innerHTML =
+    view === "graph" ? graph(s) : view === "spec" ? specification(s) : decision(s);
+  document
+    .querySelectorAll("[data-view]")
+    .forEach((b) => b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false"));
+  if (previousId === selected) {
+    for (const name of open) {
+      const el = $(`[data-keep="${name}"]`);
+      if (el) el.open = true;
     }
-    if (focused && field) {
-      const form = [...document.querySelectorAll("[data-question]")].find(
-        (e) => e.dataset.question === focused,
-      );
-      const el =
-        field === "choice"
-          ? [...(form?.querySelectorAll("input") || [])].find((i) => i.value === focusedValue)
-          : form?.elements.namedItem(field);
-      if (el instanceof HTMLElement) {
+    if (focused) {
+      const el = document.getElementById(focused);
+      if (el) {
         el.focus({ preventScroll: true });
-        if (typeof selection === "number" && el.setSelectionRange)
-          el.setSelectionRange(selection, selection);
+        if (typeof selectionStart === "number" && el.setSelectionRange)
+          el.setSelectionRange(selectionStart, selectionEnd);
       }
     }
   }
+  if (view === "graph" && scrollLeft !== undefined) {
+    $(".graph-scroll").scrollLeft = scrollLeft;
+    $(".graph-scroll").scrollTop = scrollTop;
+  } else if (view === "graph") {
+    const svg = $(".graph-scroll svg");
+    if (svg) {
+      zoom =
+        $(".graph-scroll").clientWidth < 500
+          ? 1
+          : Math.min(1, $(".graph-scroll").clientWidth / Number(svg.dataset.width));
+      svg.setAttribute("width", Number(svg.dataset.width) * zoom);
+      svg.setAttribute("height", Number(svg.dataset.height) * zoom);
+    }
+  }
+}
+function select(id) {
+  selected = id;
+  view = "decision";
+  render(current);
 }
 document.addEventListener("input", (e) => {
-  const form = e.target.closest("[data-question]");
-  if (!form) return;
-  const values = new FormData(form);
-  let option = String(values.get("choice") || ""),
-    other = String(values.get("other") || "");
-  if (e.target.name === "other" && other.trim()) {
-    form.querySelectorAll("input").forEach((i) => (i.checked = false));
-    option = "";
-  }
-  if (e.target.name === "choice") {
-    form.elements.other.value = "";
-    other = "";
-  }
-  drafts.set(form.dataset.question, { option, other });
+  if (e.target.id === "other-text") drafts.set(selected, e.target.value);
 });
 document.addEventListener("submit", (e) => {
-  const form = e.target.closest("[data-question]");
-  if (!form) return;
+  if (e.target.id !== "other-form") return;
   e.preventDefault();
-  const id = form.dataset.question,
-    d = current.state.decisions[id],
-    draft = drafts.get(id);
-  if (!draft?.option && !draft?.other.trim()) {
-    error("Choose an option or write your own answer first.");
-    return;
+  const d = current.state.decisions[selected],
+    answer = $("#other-text").value.trim();
+  if (answer)
+    void act({
+      type: "answer",
+      id: d.id,
+      revision: d.revision,
+      response: { action: "other", answer },
+    });
+});
+document.addEventListener("keydown", (e) => {
+  const node = e.target.closest(".node");
+  if (node && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault();
+    select(node.dataset.select);
   }
-  void act({
-    type: "answer",
-    id,
-    revision: d.revision,
-    response: {
-      action: draft.other.trim() ? "other" : "answer",
-      answer: draft.other.trim() || draft.option,
-    },
-  });
 });
 document.addEventListener("click", (e) => {
-  const review = e.target.closest("[data-review]");
-  if (review) {
-    void act({
-      type: "review",
-      id: review.dataset.review,
-      accept: review.dataset.accept === "true",
-    });
+  const b = e.target.closest("button,[data-select]");
+  if (!b) return;
+  if (b.dataset.select) {
+    select(b.dataset.select);
     return;
   }
-  const nav = e.target.closest("[data-view]");
-  if (nav) {
-    view = nav.dataset.view;
-    document
-      .querySelectorAll("[data-view]")
-      .forEach((n) => n.setAttribute("aria-current", n === nav ? "page" : "false"));
+  if (b.dataset.view) {
+    view = b.dataset.view;
     render(current);
     return;
   }
-  const reopen = e.target.closest("[data-reopen]");
-  if (reopen) {
-    const id = reopen.dataset.reopen;
-    void act({ type: "reopen", id, revision: current.state.decisions[id].revision });
-    return;
-  }
-  const button = e.target.closest("[data-action]");
-  if (button) {
-    const id = button.closest("[data-id]").dataset.id;
+  if (b.dataset.option) {
+    const d = current.state.decisions[selected];
     void act({
       type: "answer",
-      id,
-      revision: current.state.decisions[id].revision,
-      response: { action: button.dataset.action },
+      id: d.id,
+      revision: d.revision,
+      response: { action: "answer", answer: b.dataset.option },
     });
+    return;
+  }
+  if (b.dataset.action) {
+    const d = current.state.decisions[selected];
+    void act({
+      type: "answer",
+      id: d.id,
+      revision: d.revision,
+      response: { action: b.dataset.action },
+    });
+    return;
+  }
+  if (b.dataset.reopen) {
+    const d = current.state.decisions[b.dataset.reopen];
+    void act({ type: "reopen", id: d.id, revision: d.revision });
+    return;
+  }
+  if (b.dataset.review) {
+    void act({ type: "review", id: b.dataset.review, accept: b.dataset.accept === "true" });
+    return;
+  }
+  if (b.hasAttribute("data-close")) {
+    b.closest("dialog").close();
+    return;
+  }
+  if (b.dataset.zoom) {
+    const svg = $(".graph-scroll svg");
+    zoom =
+      b.dataset.zoom === "fit"
+        ? $(".graph-scroll").clientWidth / Number(svg.dataset.width)
+        : Math.max(0.3, Math.min(2.5, zoom + (b.dataset.zoom === "in" ? 0.2 : -0.2)));
+    svg.setAttribute("width", Number(svg.dataset.width) * zoom);
+    svg.setAttribute("height", Number(svg.dataset.height) * zoom);
+    return;
+  }
+  if (b.id === "next" || b.id === "previous") {
+    const ds = Object.values(current.state.decisions),
+      i = ds.findIndex((d) => d.id === selected);
+    select(ds[(i + (b.id === "next" ? 1 : -1) + ds.length) % ds.length].id);
   }
 });
 $("#explore").onclick = () => void act({ type: current.running ? "pause" : "explore" });
+$("#activity-open").onclick = () => $("#activity-dialog").showModal();
+$("#brief-open").onclick = () => $("#brief-dialog").showModal();
 $("#steer-open").onclick = () => $("#steer-dialog").showModal();
-$("#steer-close").onclick = () => $("#steer-dialog").close();
+$("#mode").onclick = () => $("#brief-dialog").showModal();
+$("#constraint-brief").onclick = () => {
+  $("#brief-dialog").close();
+  $("#steer-dialog").showModal();
+};
 $("#steer-form").onsubmit = async (e) => {
   e.preventDefault();
-  await act({ type: "steer", text: $("#steer-text").value.trim() });
-  if (!$("#error").textContent) {
+  if (await act({ type: "steer", text: $("#steer-text").value.trim() })) {
     $("#steer-text").value = "";
     $("#steer-dialog").close();
+    notify("Constraint saved");
   }
 };
 $("#export").onclick = () => {
   if (!current) return;
-  const url = URL.createObjectURL(new Blob([current.specification], { type: "text/markdown" }));
-  const a = document.createElement("a");
+  const url = URL.createObjectURL(new Blob([current.specification], { type: "text/markdown" })),
+    a = document.createElement("a");
   a.href = url;
   a.download = "specification.md";
   a.click();
@@ -356,13 +480,34 @@ $("#export").onclick = () => {
     const events = new EventSource("/api/events");
     events.onmessage = (e) => {
       render(JSON.parse(e.data));
-      $("#connection").textContent = "Connected locally";
     };
-    events.onerror = () => {
-      $("#connection").textContent = "Reconnecting…";
-    };
+    events.onerror = () => error("Connection lost. Reconnecting…");
+    events.onopen = () => error("");
   } catch (e) {
     error(e.message);
-    $("#connection").textContent = "Not connected";
   }
 })();
+let graphPan;
+document.addEventListener("pointerdown", (e) => {
+  const surface = e.target.closest(".graph-scroll");
+  if (!surface || e.target.closest(".node") || e.button !== 0 || e.pointerType === "touch") return;
+  graphPan = {
+    surface,
+    x: e.clientX,
+    y: e.clientY,
+    left: surface.scrollLeft,
+    top: surface.scrollTop,
+  };
+  surface.setPointerCapture(e.pointerId);
+});
+document.addEventListener("pointermove", (e) => {
+  if (!graphPan) return;
+  graphPan.surface.scrollLeft = graphPan.left - (e.clientX - graphPan.x);
+  graphPan.surface.scrollTop = graphPan.top - (e.clientY - graphPan.y);
+});
+document.addEventListener("pointerup", () => {
+  graphPan = undefined;
+});
+document.addEventListener("pointercancel", () => {
+  graphPan = undefined;
+});

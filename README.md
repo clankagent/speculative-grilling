@@ -2,7 +2,9 @@
 
 An asynchronous decision workspace for agents and people. Explore plausible answers in parallel, then bring the consequential questions to the human. An unresolved question blocks commitment, not useful computation.
 
-![The working browser queue and exploration panel, using synthetic example data](docs/workspace.png)
+![The decision queue and side-by-side comparison, using synthetic example data](docs/workspace.png)
+
+[Graph view: connected decisions and conditional dependencies](docs/graph.png).
 
 ## Try the interface
 
@@ -17,13 +19,13 @@ pnpm exec vp run web
 
 Open the local link printed by the launcher. **No keys, model account or Pi installation needed.** This is an interactive synthetic example using the real graph, policy and event store. The branch analysis is scripted, clearly labeled, and costs nothing. It does not demonstrate model quality. The example lives in memory and resets when its server restarts.
 
-1. Click **Explore alternatives**. The side panel compares deletion policies while both questions stay available.
-2. Choose **Keep it recoverable for 30 days**, then **Use this answer**. The immediate-deletion branches are pruned and a question about who can restore notes becomes available.
-3. Answer another question, write your own alternative, or select **Decide later**. Deferred questions have their own view.
-4. Inspect **Decisions** to reopen a choice, **Decision graph** to see dependencies, or **Specification** for the committed result. **Export specification** downloads Markdown.
-5. Use **Add direction** to record a constraint. The synthetic worker cannot reason about arbitrary new requirements; live providers can.
+1. Click **Explore**. Analysis runs in the background; the queue remains available.
+2. Compare the deletion policies side by side, then click **Choose A** for 30-day recovery. The immediate-deletion branches are pruned and a question about who can restore notes becomes available.
+3. Select any decision in the queue. Use **Write another answer** for free text or **Later** to set it aside; it stays accessible in the queue.
+4. Select a saved decision and use **Change answer** to reopen it. **Graph** shows connected dependencies and condition labels; select a node to inspect it. **Specification** contains committed answers. **Export** downloads Markdown.
+5. Use **Add a constraint** to record a constraint (also available inside **Brief** on phones). The synthetic worker cannot reason about arbitrary new requirements; live providers can.
 
-The interface has a live question queue, option findings with provenance, a simultaneous exploration panel, deferred decisions, reviewed interpretations, reopening, a dependency view and committed exports. Questions are ordinary forms on one page; there is no command sequence or one-question-at-a-time wizard. Background updates preserve answer drafts.
+The compact queue keeps every decision accessible, with one selected comparison in the main pane. Options sit side by side and have direct answer buttons. Evidence, custom answers and activity are available on demand. Selecting another question never blocks background work, and drafts survive switching questions and incoming results. The graph has directed edges, condition labels, zoom and panning; its nodes open the corresponding decision.
 
 ## Use it on a real brief
 
@@ -33,7 +35,7 @@ Configure the reasoning provider and optionally Jev in the server environment us
 pnpm exec vp run web --live --brief "Design a small offline reading list"
 ```
 
-Open the printed private link and click **Explore alternatives**. This makes provider calls. Subsequent answers and steering can continue exploration within the session budget until paused. Credentials stay in the server process. The selected brief, context, relevant decisions and evidence are sent to your configured providers; no repository files or ambient chat history are automatically collected.
+Open the printed private link and click **Explore**. This makes provider calls. Subsequent answers and steering can continue exploration within the session budget until paused. Credentials stay in the server process. The selected brief, context, relevant decisions and evidence are sent to your configured providers; no repository files or ambient chat history are automatically collected.
 
 Real sessions persist in SQLite outside the checkout. Use `--live --resume` to reopen the most recent browser session after a restart. Restarting does not silently restart paid work.
 
@@ -53,7 +55,7 @@ Both adapters share the event-sourced engine. Agent-proposed interpretations of 
 
 Implemented: durable decision graph and replay, authority checks, bounded hypotheses, branch pruning and merging, stale-result handling, scoped work, reasoning and Jev providers, a VoI scheduler, shared browser UI, Pi and MCP adapters, Tasks/MRTR fallback, committed exports and a CLI. A combined live reasoning/Jev/answer/export/replay qualification passed.
 
-Remaining: broader real-model calibration, real-user attention measurements, automated evidence collection, a worker independent of the host process, and broader host compatibility. The graph view shows dependencies and conditions; it is not a spatial node editor. Option findings are recorded hypothetical observations, not proven causal predictions. No recommendation is invented when none is recorded. The current VoI score is an ordinal heuristic, not a calibrated probability.
+Remaining: broader real-model calibration, real-user attention measurements, automated evidence collection, a worker independent of the host process, and broader host compatibility. The graph shows connected dependencies and conditions; it is an inspection view, not an editable node canvas. Option findings are recorded hypothetical observations, not proven causal predictions. No recommendation is invented when none is recorded. The current VoI score is an ordinal heuristic, not a calibrated probability.
 
 This is a development alpha, not a completed production release. The public repository is the distribution point; no package-registry installation is required.
 

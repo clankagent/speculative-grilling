@@ -1,9 +1,19 @@
 # Browser workspace
 
-The primary human surface is an asynchronous browser queue. Pi and MCP connect to the same service; native elicitation remains a compatibility fallback, not the product interface.
+The primary human surface is a decision queue with a focused comparison. Pi and MCP use this same service; host elicitation is an explicit fallback.
 
-Design: a restrained operational workspace, with a quiet navigation rail, readable question sheets and a secondary exploration column. The main action is answering a consequential question while independent work continues. Questions, deferred decisions, recorded decisions and the dependency graph are separate views. No opening dashboard of decorative metrics.
+## Composition and interaction
 
-Reference inspected: [Linear's interface refresh](https://linear.app/now/behind-the-latest-design-refresh), including the rendered navigation comparisons and its rationale for separating orientation from working content. Compact navigation recedes; questions receive the space. This is an independent layout with a wider reading column and simultaneous question forms. Arial, neutral dark surfaces, 14–16px body copy, restrained green activity indicators, explicit text statuses and generous option targets. Phone layout puts navigation above the queue and exploration below it.
+Keep all decisions visible in a compact queue, grouped by readiness. Selecting a row opens its comparison immediately; there is no enforced order or blocking wizard. Options sit side by side on a shared baseline. Each has a direct, explicitly labeled choice action. Custom answers, evidence and activity are disclosed on demand. Save an answer, update the queue, and move to the next available decision. Background work continues independently.
 
-The offline example uses synthetic, deterministic branch analysis through the real event-sourced service. It is interactive, but does not evaluate model quality. Real sessions use configured providers and explicit exploration controls. Credentials remain on the server. Recommendations are not fabricated when the engine has none; consequences cite recorded branch work and disclose missing analysis.
+The graph is an SVG DAG with directed dependency edges and condition labels. Nodes are keyboard-accessible links to the corresponding decision. Initial fit, zoom and scrolling support larger graphs. Independent decisions remain unconnected; do not invent edges for visual completeness.
+
+This is an adaptation of the operational direction to a light, paper-like comparison surface: a dense queue, large question, medium option titles, short findings, and quiet secondary controls. Warm neutral backgrounds, black type, a restrained rust selection accent, and flat separators distinguish navigation from the decision. Do not surround each content fragment in another card. Connection success, generic mottos and repeated instructional paragraphs are absent. Connection failures remain visible.
+
+The [Linear interface rationale](https://linear.app/now/behind-the-latest-design-refresh) and rendered comparisons were inspected during the initial design. Its distinction between orientation and working content remains relevant; the earlier card-heavy implementation failed to apply that hierarchy. The current composition uses the evidence already gathered rather than collecting more references as a substitute for interaction design.
+
+On phones the queue becomes a horizontally scrollable strip, with both options visible together below it. All actions remain reachable. The desktop graph initially fits its pane. On phones it keeps legible node sizes with horizontal scrolling; Fit and zoom remain available.
+
+## Data boundaries
+
+The offline example uses deterministic synthetic analysis through the real event-sourced service. It makes no provider calls. A small Example label opens a brief describing that boundary. Real-session provider transmission is described in the brief dialog. Credentials stay on the server. Findings come from stored branch work; missing findings are shown as unexplored, never invented. Pending agent interpretations require human acceptance.
